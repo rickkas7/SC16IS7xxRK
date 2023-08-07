@@ -2,6 +2,33 @@
 
 static Logger _uartLogger = Logger("app.uart");
 
+
+bool SC16IS7xxPort::begin(int baudRate, uint8_t options) {
+
+	// My test board uses this oscillator
+	// KC3225K1.84320C1GE00
+	// OSC XO 1.8432MHz CMOS SMD $1.36
+	// https://www.digikey.com/product-detail/en/avx-corp-kyocera-corp/KC3225K1.84320C1GE00/1253-1488-1-ND/5322590
+	// Another suggested frequency from the data sheet is 3.072 MHz
+
+	// The divider devices the clock frequency to 16x the baud rate
+	int div = interface->oscillatorFreqHz / (baudRate * 16);
+
+	interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, SC16IS7xxInterface::LCR_SPECIAL_START); // 0x80
+	interface->writeRegister(channel, SC16IS7xxInterface::DLL_REG, div & 0xff);
+	interface->writeRegister(channel, SC16IS7xxInterface::DLH_REG, div >> 8);
+	interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, SC16IS7xxInterface::LCR_SPECIAL_END); // 0xbf
+
+	interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, options & 0x3f);
+
+	// Enable FIFOs
+	interface->writeRegister(channel, SC16IS7xxInterface::FCR_IIR_REG, 0x07); // Enable FIFO, Clear RX and TX FIFOs
+
+    // Also MCR?
+	
+	return true;
+}
+
 int SC16IS7xxPort::available() {
 	return interface->readRegister(channel, SC16IS7xxInterface::RXLVL_REG);
 }
@@ -152,6 +179,7 @@ SC16IS7xxInterface &SC16IS7xxInterface::withSPI(SPIClass *spi, pin_t csPin, size
 
     return *this;
 }
+
 
 void SC16IS7xxInterface::beginTransaction() {
     if (spi) {

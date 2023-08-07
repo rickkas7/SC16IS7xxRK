@@ -10,10 +10,10 @@ class SC16IS7x2; // Forward declaration
 /**
  * @brief Class for an instance of a UART. 
  * 
- * There is one of these with the SC16IS7x0 and two with the SC16IS7x2. You will not insantiate
+ * There is one of these with the SC16IS7x0 and two with the SC16IS7x2. You will not instantiate
  * one of these directly.
  */
-class SC16IS7xxPort {
+class SC16IS7xxPort : public Stream {
 public:
 	/**
 	 * @brief Set up the chip. You must do this before reading or writing.
@@ -105,8 +105,9 @@ public:
 	 *
 	 * @return The number of bytes written.
 	 *
-	 * This is faster than writing a single byte at time because up to 32 bytes of data can
-	 * be sent or received in an I2C transaction, greatly reducing overhead.
+	 * This is faster than writing a single byte at time because up to 31 bytes of data can
+	 * be sent or received in an I2C transaction, greatly reducing overhead. For SPI,
+     * 64 bytes can be written at a time.
 	 */
 	virtual size_t write(const uint8_t *buffer, size_t size);
 
@@ -120,7 +121,8 @@ public:
 	 * @return The number of bytes actually read or -1 if there are no bytes available to read.
 	 *
 	 * This is faster than reading a single byte at time because up to 32 bytes of data can
-	 * be sent or received in an I2C transaction, greatly reducing overhead.
+	 * be sent or received in an I2C transaction, greatly reducing overhead. For SPI,
+     * 64 bytes can be written at a time.
 	 */
 	virtual int read(uint8_t *buffer, size_t size);
 
@@ -221,7 +223,6 @@ public:
      * 
      */
     SC16IS7xxInterface &withOscillatorFrequency(int freqHz) { this->oscillatorFreqHz = freqHz; return *this; };
-
 
     /**
      * @brief Read a register
@@ -353,6 +354,49 @@ public:
      */
     SC16IS7x0();
     virtual ~SC16IS7x0() {};
+
+    /**
+     * @brief Chip is connected by I2C
+     * 
+     * @param wire The I2C port, typically &Wire but could be &Wire1, etc.
+     * @param addr I2C address (see note below)
+     * @return SC16IS7xxInterface& 
+     * 
+     * A1   A0   Index  I2C Address
+     * VDD  VDD   0     0x48
+     * VDD  GND   1     0x49
+     * VDD  SCL   2     0x4a
+     * VDD  SDA   3     0x4b
+     * GND  VDD   4     0x4c
+     * GND  GND   5     0x4d
+     * GND  SCL   6     0x4e
+     * GND  SDA   7     0x4f
+     * SCL  VDD   8     0x50
+     * SCL  GND   9     0x51
+     * SCL  SCL  10     0x52
+     * SCL  SDA  11     0x53
+     * SDA  VDD  12     0x54
+     * SDA  GND  13     0x55
+     * SDA  SCL  14     0x56
+     * SDA  SDA  15     0x57
+     * 
+     * You can pass either the index (0 - 15) or the I2C address in the address field.
+     * Note that the NXP datasheet addresses must be divided by 2 because they include the
+     * R/W bit in the address, and Particle and Arduino do not. That's why the datasheet
+     * lists the starting address as 0x90 instead of 0x48.
+     */
+    SC16IS7x0 &withI2C(TwoWire *wire, uint8_t addr = 0) { SC16IS7xxInterface::withI2C(wire, addr); return *this; };
+
+    /**
+     * @brief Chip is connected by SPI
+     * 
+     * @param spi The SPI port. Typically &SPI but could be &SPI1, etc.
+     * @param csPin The pin used for chip select
+     * @param speedMHz The SPI bus speed in MHz.
+     * @return SC16IS7xxInterface& 
+     */
+    SC16IS7x0 &withSPI(SPIClass *spi, pin_t csPin, size_t speedMHz) { SC16IS7xxInterface::withSPI(spi, csPin, speedMHz); return *this; };
+
 
     /**
      * @brief Convenience accessor for the port object
