@@ -3,6 +3,148 @@
 static Logger _uartLogger = Logger("app.uart");
 
 
+SC16IS7xxBuffer::SC16IS7xxBuffer() : Thread("uart", threadFunctionStatic, (void *)this, OS_THREAD_PRIORITY_DEFAULT, 512) {
+
+}
+SC16IS7xxBuffer::~SC16IS7xxBuffer() {
+
+}
+
+bool SC16IS7xxBuffer::init(size_t bufSize, std::function<void(SC16IS7xxBuffer *bufOb)> threadCallback) {
+    bool result = false;
+
+    buf = new uint8_t[bufSize];
+    if (buf) {
+        this->bufSize = bufSize;
+        this->threadCallback = threadCallback;
+        result = true;
+    }
+
+    return result;
+}
+
+size_t SC16IS7xxBuffer::availableToRead() const {
+    size_t result;
+
+    lock();
+    result = writeOffset - readOffset;
+    unlock();
+
+    return result;
+}
+
+int SC16IS7xxBuffer::read() {
+    int result = -1;
+
+    lock();
+    if (readOffset < writeOffset) {
+        result = buf[readOffset++ % bufSize];
+        if (readOffset == writeOffset) {
+            readOffset = writeOffset = 0;
+        }
+    }
+    unlock();
+
+    return result;
+}
+
+int SC16IS7xxBuffer::read(uint8_t *buffer, size_t size) {
+    int result = -1;
+
+    lock();
+    if (readOffset < writeOffset) {
+        result = (int)(writeOffset - readOffset);
+        if (result > (int)size) {
+            result = (int)size;
+        }
+
+        for(int ii = 0; ii < result; ii++) {
+            buffer[ii] = buf[readOffset++ % bufSize];
+        }
+
+        if (readOffset == writeOffset) {
+            readOffset = writeOffset = 0;
+        }
+    }
+    unlock();
+
+    return result;
+}
+
+size_t SC16IS7xxBuffer::availableToWrite() const {
+    size_t result;
+
+    // Does not require a mutex lock here since availableToRead obtains a lock
+    result = bufSize - availableToRead();
+
+    return result;
+}
+
+size_t SC16IS7xxBuffer::write(const uint8_t *buffer, size_t size) {
+    
+    lock();
+    size_t avail = bufSize - (writeOffset - readOffset);
+    if (size > avail) {
+        size = avail;
+    }
+    for(size_t ii = 0; ii < size; ii++) {
+        buf[writeOffset++ % bufSize] = buffer[ii];
+    }
+
+    unlock();
+
+    return size;
+}
+
+void SC16IS7xxBuffer::threadFunction() {
+	while(true) {
+        if (threadCallback) {
+            threadCallback(this);
+        }
+		delay(1);
+	}
+}
+
+// [static]
+void SC16IS7xxBuffer::threadFunctionStatic(void *param) {
+	SC16IS7xxBuffer *This = (SC16IS7xxBuffer *)param;
+
+	This->threadFunction();
+}
+
+
+
+
+SC16IS7xxPort &SC16IS7xxPort::withBufferedRead(size_t bufferSize, pin_t intPin) {
+    
+    if (!readBuffer) {
+        readBuffer = new SC16IS7xxBuffer();
+        if (readBuffer) {
+            readBuffer->init(bufferSize, [intPin](SC16IS7xxBuffer *bufObj) {
+                // This code is called from the read thread
+
+                bufObj->lock();
+
+                if (intPin != PIN_INVALID) {
+                    // Check interrupt
+
+                    // Clear interrupt
+                }
+
+            
+                // Check the LHR
+
+                bufObj->unlock();
+
+            });
+        }
+    }
+    
+
+    return *this;
+}
+
+
 bool SC16IS7xxPort::begin(int baudRate, uint8_t options) {
 
 	// My test board uses this oscillator

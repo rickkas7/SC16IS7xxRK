@@ -7,6 +7,51 @@
 class SC16IS7xxInterface; // Forward declaration
 class SC16IS7x2; // Forward declaration
 
+class SC16IS7xxBuffer : public Thread {
+public:
+    SC16IS7xxBuffer();
+    virtual ~SC16IS7xxBuffer();
+
+    bool init(size_t bufSize, std::function<void(SC16IS7xxBuffer *bufObj)> threadCallback);
+
+    // Read API
+    size_t availableToRead() const;
+    int read();
+    int read(uint8_t *buffer, size_t size);
+
+    // Write API
+    size_t availableToWrite() const;
+    size_t write(const uint8_t *buffer, size_t size);
+
+
+    void lock() const { mutex.lock(); }
+    bool trylock() const { return mutex.trylock(); }
+    bool try_lock() const { return mutex.trylock(); }
+    void unlock() const { mutex.unlock(); }
+
+protected:
+    /**
+     * @brief Thread function called from FreeRTOS. Never returns!
+     */
+    void threadFunction();
+
+    /**
+     * @brief Static thread function, called from FreeRTOS
+     *
+     * Note: param must be a pointer to this. threadFunction is called from this function.
+     * Never returns!
+     */
+    static void threadFunctionStatic(void *param);
+
+
+    uint8_t *buf = nullptr;
+	size_t bufSize = 0;
+    size_t readOffset = 0;
+    size_t writeOffset = 0;
+    std::function<void(SC16IS7xxBuffer *bufObj)> threadCallback;
+    mutable Mutex mutex;
+};
+
 /**
  * @brief Class for an instance of a UART. 
  * 
@@ -15,6 +60,15 @@ class SC16IS7x2; // Forward declaration
  */
 class SC16IS7xxPort : public Stream {
 public:
+    /**
+     * @brief Enable buffered read mode
+     * 
+     * @param bufferSize Buffer size in bytes
+     * 
+     * @param intPin GPIO connected to the SC16IS7xx IRQ pin. This is recommended for best performance. If not using interrupts, set to PIN_INVALID.
+     */
+    SC16IS7xxPort &withBufferedRead(size_t bufferSize, pin_t intPin);
+
 	/**
 	 * @brief Set up the chip. You must do this before reading or writing.
 	 *
@@ -161,6 +215,8 @@ protected:
 	bool writeBlocksWhenFull = true;
     uint8_t channel = 0;
     SC16IS7xxInterface *interface = nullptr;
+
+    SC16IS7xxBuffer *readBuffer = nullptr;
 
     friend class SC16IS7x2;
 };
