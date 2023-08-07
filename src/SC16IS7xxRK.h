@@ -7,11 +7,36 @@
 class SC16IS7xxInterface; // Forward declaration
 class SC16IS7x2; // Forward declaration
 
-class SC16IS7xxBuffer : public Thread {
+/**
+ * @brief Class used internally for buffering data
+ * 
+ * Since the hardware FIFO is only 64 bytes, this class is used to store data in a larger
+ * buffer allocated on the heap.
+ * 
+ * This class should never be instantiated as a global object.
+ * 
+ * You cannot stop the thread and you should never delete the object after instantiating it.
+ */
+class SC16IS7xxBuffer {
 public:
+    /**
+     * @brief Construct a buffer object. You will normally never have to instantiate one.
+     */
     SC16IS7xxBuffer();
+
+    /**
+     * @brief Destructor. You should never delete this object!
+     */
     virtual ~SC16IS7xxBuffer();
 
+    /**
+     * @brief Allocate 
+     * 
+     * @param bufSize 
+     * @param threadCallback 
+     * @return true 
+     * @return false 
+     */
     bool init(size_t bufSize, std::function<void(SC16IS7xxBuffer *bufObj)> threadCallback);
 
     // Read API
@@ -31,6 +56,16 @@ public:
 
 protected:
     /**
+     * @brief This class is not copyable
+     */
+    SC16IS7xxBuffer(const SC16IS7xxBuffer&) = delete;
+
+    /**
+     * @brief This class is not copyable
+     */
+    SC16IS7xxBuffer& operator=(const SC16IS7xxBuffer&) = delete;
+
+    /**
      * @brief Thread function called from FreeRTOS. Never returns!
      */
     void threadFunction();
@@ -49,7 +84,8 @@ protected:
     size_t readOffset = 0;
     size_t writeOffset = 0;
     std::function<void(SC16IS7xxBuffer *bufObj)> threadCallback;
-    mutable Mutex mutex;
+    Thread thread;
+    mutable RecursiveMutex mutex;
 };
 
 /**

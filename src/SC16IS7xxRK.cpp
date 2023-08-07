@@ -3,7 +3,7 @@
 static Logger _uartLogger = Logger("app.uart");
 
 
-SC16IS7xxBuffer::SC16IS7xxBuffer() : Thread("uart", threadFunctionStatic, (void *)this, OS_THREAD_PRIORITY_DEFAULT, 512) {
+SC16IS7xxBuffer::SC16IS7xxBuffer() : thread("uart", threadFunctionStatic, (void *)this, OS_THREAD_PRIORITY_DEFAULT, 512) {
 
 }
 SC16IS7xxBuffer::~SC16IS7xxBuffer() {
@@ -180,18 +180,23 @@ int SC16IS7xxPort::availableForWrite() {
 }
 
 
-int SC16IS7xxPort::read() {
+int SC16IS7xxPort::read() {    
 	if (hasPeek) {
 		hasPeek = false;
 		return peekByte;
 	}
 	else {
-		if (available()) {
-			return interface->readRegister(channel, SC16IS7xxInterface::RHR_THR_REG);
-		}
-		else {
-			return -1;
-		}
+        if (!readBuffer) {
+            if (available()) {
+                return interface->readRegister(channel, SC16IS7xxInterface::RHR_THR_REG);
+            }
+            else {
+                return -1;
+            }
+        }
+        else {
+            return readBuffer->read();
+        }
 	}
 }
 
@@ -279,22 +284,27 @@ size_t SC16IS7xxPort::write(const uint8_t *buffer, size_t size) {
  * be sent or received in an I2C transaction, greatly reducing overhead.
  */
 int SC16IS7xxPort::read(uint8_t *buffer, size_t size) {
-	int avail = available();
-	if (avail == 0) {
-		// No data to read
-		return -1;
-	}
-	if (size > (size_t) avail) {
-		size = (size_t) avail;
-	}
-	if (size > interface->readInternalMax()) {
-		size = interface->readInternalMax();
-	}
-	if (!interface->readInternal(channel, buffer, size)) {
-		return -1;
-	}
+    if (!readBuffer) {
 
-	return (int) size;
+        int avail = available();
+        if (avail == 0) {
+            // No data to read
+            return -1;
+        }
+        if (size > (size_t) avail) {
+            size = (size_t) avail;
+        }
+        if (size > interface->readInternalMax()) {
+            size = interface->readInternalMax();
+        }
+        if (!interface->readInternal(channel, buffer, size)) {
+            return -1;
+        }
+    	return (int) size;
+    }
+    else {
+        return readBuffer->read(buffer, size);
+    }
 }
 
 
