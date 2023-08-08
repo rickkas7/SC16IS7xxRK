@@ -3,20 +3,29 @@
 static Logger _uartLogger = Logger("app.uart");
 
 
-SC16IS7xxBuffer::SC16IS7xxBuffer() : thread("uart", threadFunctionStatic, (void *)this, OS_THREAD_PRIORITY_DEFAULT, 512) {
+SC16IS7xxBuffer::SC16IS7xxBuffer() {
 
 }
 SC16IS7xxBuffer::~SC16IS7xxBuffer() {
-
 }
 
-bool SC16IS7xxBuffer::init(size_t bufSize, std::function<void(SC16IS7xxBuffer *bufOb)> threadCallback) {
+void SC16IS7xxBuffer::free() {
+    if (buf) {
+        delete[] buf;
+        buf = nullptr;        
+    }
+}
+
+
+bool SC16IS7xxBuffer::init(size_t bufSize) {
     bool result = false;
+
+    free();
 
     buf = new uint8_t[bufSize];
     if (buf) {
         this->bufSize = bufSize;
-        this->threadCallback = threadCallback;
+        readOffset = writeOffset = 0;
         result = true;
     }
 
@@ -74,14 +83,23 @@ int SC16IS7xxBuffer::read(uint8_t *buffer, size_t size) {
 size_t SC16IS7xxBuffer::availableToWrite() const {
     size_t result;
 
-    // Does not require a mutex lock here since availableToRead obtains a lock
-    result = bufSize - availableToRead();
+    if (buf) {
+        // Does not require a mutex lock here since availableToRead obtains a lock
+        result = bufSize - availableToRead();
+    }
+    else {
+        result = 0;
+    }
 
     return result;
 }
 
 size_t SC16IS7xxBuffer::write(const uint8_t *buffer, size_t size) {
     
+    if (!buf) {
+        return 0;
+    }
+
     lock();
     size_t avail = bufSize - (writeOffset - readOffset);
     if (size > avail) {
@@ -96,23 +114,36 @@ size_t SC16IS7xxBuffer::write(const uint8_t *buffer, size_t size) {
     return size;
 }
 
-void SC16IS7xxBuffer::threadFunction() {
-	while(true) {
-        if (threadCallback) {
-            threadCallback(this);
+void SC16IS7xxBuffer::writeCallback(std::function<void(uint8_t *buffer, size_t &size)> callback) {
+    if (!buf) {
+        return;
+    }
+
+    lock();
+    size_t avail = bufSize - (writeOffset - readOffset);
+    
+    while(avail > 0) {
+        size_t writeOffsetInBlock = writeOffset % bufSize;
+        size_t bytesThisBlock = bufSize - writeOffsetInBlock;
+        if (bytesThisBlock > avail) {
+            bytesThisBlock = avail;
         }
-		delay(1);
-	}
+        size_t callbackSize = bytesThisBlock;
+        callback(&buf[writeOffsetInBlock], callbackSize);
+
+        writeOffset += callbackSize;
+        avail -= callbackSize;
+
+        if (callbackSize < bytesThisBlock) {
+            // Didn't read a full buffer
+            break;
+        }
+    }
+
+    unlock();
+
+
 }
-
-// [static]
-void SC16IS7xxBuffer::threadFunctionStatic(void *param) {
-	SC16IS7xxBuffer *This = (SC16IS7xxBuffer *)param;
-
-	This->threadFunction();
-}
-
-
 
 
 SC16IS7xxPort &SC16IS7xxPort::withBufferedRead(size_t bufferSize, pin_t intPin) {
@@ -120,21 +151,28 @@ SC16IS7xxPort &SC16IS7xxPort::withBufferedRead(size_t bufferSize, pin_t intPin) 
     if (!readBuffer) {
         readBuffer = new SC16IS7xxBuffer();
         if (readBuffer) {
-            readBuffer->init(bufferSize, [intPin](SC16IS7xxBuffer *bufObj) {
-                // This code is called from the read thread
+            readBuffer->init(bufferSize);
 
-                bufObj->lock();
+            interface->registerThreadFunction([intPin, this]() {
+                // This code is called from the worker thread
+
 
                 if (intPin != PIN_INVALID) {
                     // Check interrupt
+                    if (pinReadFast(intPin)) {
+                        // Interrupt is not set
+                        return;
+                    }
 
                     // Clear interrupt
+
                 }
 
-            
+                readBuffer->lock();
+
                 // Check the LHR
 
-                bufObj->unlock();
+                readBuffer->unlock();
 
             });
         }
@@ -532,6 +570,32 @@ size_t SC16IS7xxInterface::writeInternalMax() const {
     }
     return value;
 }
+
+void SC16IS7xxInterface::registerThreadFunction(std::function<void()> fn) {
+    if (!workerThread) {
+        workerThread = new Thread("uart", threadFunctionStatic, (void *)this, OS_THREAD_PRIORITY_DEFAULT, 512);        
+    }
+    threadFunctions.push_back(fn);
+}
+
+
+void SC16IS7xxInterface::threadFunction() {
+	while(true) {
+        for(auto fn : threadFunctions) {
+            fn();
+        }
+		delay(1);
+	}
+}
+
+// [static]
+void SC16IS7xxInterface::threadFunctionStatic(void *param) {
+	SC16IS7xxInterface *This = (SC16IS7xxInterface *)param;
+
+	This->threadFunction();
+}
+
+
 
 SC16IS7x0::SC16IS7x0() {
     interface = this;

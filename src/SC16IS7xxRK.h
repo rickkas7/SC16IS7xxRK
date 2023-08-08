@@ -13,9 +13,8 @@ class SC16IS7x2; // Forward declaration
  * Since the hardware FIFO is only 64 bytes, this class is used to store data in a larger
  * buffer allocated on the heap.
  * 
- * This class should never be instantiated as a global object.
- * 
- * You cannot stop the thread and you should never delete the object after instantiating it.
+ * You do not create one of these objects; it's created automatically when using
+ * withBufferedRead().
  */
 class SC16IS7xxBuffer {
 public:
@@ -25,33 +24,121 @@ public:
     SC16IS7xxBuffer();
 
     /**
-     * @brief Destructor. You should never delete this object!
+     * @brief Destructor. You should never need to delete one.
      */
     virtual ~SC16IS7xxBuffer();
 
     /**
-     * @brief Allocate 
+     * @brief Allocate the buffer
      * 
-     * @param bufSize 
+     * @param bufSize Size of the buffer in bytes
      * @param threadCallback 
      * @return true 
      * @return false 
+     * 
+     * This is called from withBufferedRead(), 
      */
-    bool init(size_t bufSize, std::function<void(SC16IS7xxBuffer *bufObj)> threadCallback);
+    bool init(size_t bufSize);
+
 
     // Read API
+
+    /**
+     * @brief Return the number of bytes that can be read from the buffer
+     * 
+     * @return size_t Number of bytes that can be read. 0 = no data can be read now
+     */
     size_t availableToRead() const;
+
+    /**
+     * @brief Read a single byte
+     * 
+     * @return int The byte value (0 - 255) or -1 if there is no data available to read.
+     */
     int read();
+
+    /**
+     * @brief Read multiple bytes of data to a buffer
+     * 
+     * @param buffer The buffer to store data into
+     * @param size The number of bytes requested
+     * @return int The number of bytes actually read.
+     * 
+     * The read() call does not block. It will only return the number of bytes currently
+     * available to read, so the number of bytes read will often be smaller than the 
+     * requested number of bytes in size. The returned data is not null terminated.
+     */
     int read(uint8_t *buffer, size_t size);
 
     // Write API
+
+    /**
+     * @brief The number of bytes available to write into the buffer
+     * 
+     * @return size_t Number of bytes that can be written
+     */
     size_t availableToWrite() const;
+
+    /**
+     * @brief Write data to the buffer
+     * 
+     * @param buffer 
+     * @param size 
+     * @return size_t The number of bytes written
+     * 
+     * This call does not block until there is space in the buffer! If there is 
+     * insufficient space, only the bytes that will fit are stored and the return value
+     * indicates the amount the was stored.
+     */
     size_t write(const uint8_t *buffer, size_t size);
 
+    /**
+     * @brief Write data into buffer using a non-copy callback
+     * 
+     * @param callback Function or C++ lambda, see below
+     * 
+     * This is used internally from the worker thread after reading a block of data
+     * from the UART by I2C or SPI. There is no single-byte write because that is never
+     * done because it would be extraordinarily inefficient. 
+     * 
+     * Callback prototype:
+     * void(uint8_t *buffer, size_t &size)
+     * 
+     * If there is room in the buffer to write data, your callback is called during
+     * the execution of writeCallback. It's passed a buffer you should write data to
+     * and a size which is the maximum number of bytes you can write. 
+     */
+    void writeCallback(std::function<void(uint8_t *buffer, size_t &size)> callback);
 
+    /**
+     * @brief Lock the buffer mutex
+     * 
+     * A recursive mutex is used to protect access to buf, readOffset, and writeOffset
+     * since they can be accessed from two different threads. The buffer is written from
+     * the worker thread and read from whatever thread the user is reading from, typically
+     * the application loop thread.
+     */
     void lock() const { mutex.lock(); }
+
+    /**
+     * @brief Attempt to lock the mutex. If already locked from another thread, returns false.
+     * 
+     * @return true 
+     * @return false 
+     */
     bool trylock() const { return mutex.trylock(); }
+
+    /**
+     * @brief Attempt to lock the mutex. If already locked from another thread, returns false.
+     * 
+     * @return true 
+     * @return false 
+     */
     bool try_lock() const { return mutex.trylock(); }
+    
+    /**
+     * @brief Unlock the buffer mutex
+     */
     void unlock() const { mutex.unlock(); }
 
 protected:
@@ -66,26 +153,16 @@ protected:
     SC16IS7xxBuffer& operator=(const SC16IS7xxBuffer&) = delete;
 
     /**
-     * @brief Thread function called from FreeRTOS. Never returns!
+     * @brief Free the allocate buffer buf - used internally
      */
-    void threadFunction();
-
-    /**
-     * @brief Static thread function, called from FreeRTOS
-     *
-     * Note: param must be a pointer to this. threadFunction is called from this function.
-     * Never returns!
-     */
-    static void threadFunctionStatic(void *param);
+    void free();
 
 
-    uint8_t *buf = nullptr;
-	size_t bufSize = 0;
-    size_t readOffset = 0;
-    size_t writeOffset = 0;
-    std::function<void(SC16IS7xxBuffer *bufObj)> threadCallback;
-    Thread thread;
-    mutable RecursiveMutex mutex;
+    uint8_t *buf = nullptr; //!< Buffer, allocated on heap
+	size_t bufSize = 0; //!< Size of buffer in bytes
+    size_t readOffset = 0; //!< Where to read from next, may be larger than bufSize
+    size_t writeOffset = 0; //!< Where to write to next, may be larger than bufSize
+    mutable RecursiveMutex mutex; //!< Mutex to use to access buf, readOffset, or writeOffset
 };
 
 /**
@@ -99,7 +176,7 @@ public:
     /**
      * @brief Enable buffered read mode
      * 
-     * @param bufferSize Buffer size in bytes
+     * @param bufferSize Buffer size in bytes. The buffer is allocated on the heap.
      * 
      * @param intPin GPIO connected to the SC16IS7xx IRQ pin. This is recommended for best performance. If not using interrupts, set to PIN_INVALID.
      */
@@ -420,6 +497,20 @@ protected:
 	 */
 	size_t writeInternalMax() const;
 
+    void registerThreadFunction(std::function<void()> fn);
+
+    /**
+     * @brief Thread function called from FreeRTOS. Never returns!
+     */
+    void threadFunction();
+
+    /**
+     * @brief Static thread function, called from FreeRTOS
+     *
+     * Note: param must be a pointer to this. threadFunction is called from this function.
+     * Never returns!
+     */
+    static void threadFunctionStatic(void *param);
 
 
     TwoWire *wire = nullptr;
@@ -428,6 +519,8 @@ protected:
     pin_t csPin;
     SPISettings spiSettings;
     int oscillatorFreqHz = 1843200; // 1.8432 MHz
+    Thread *workerThread = nullptr;
+    std::vector<std::function<void()>> threadFunctions;
 
     friend class SC16IS7xxPort;
 
