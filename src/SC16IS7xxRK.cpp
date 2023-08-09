@@ -205,18 +205,21 @@ bool SC16IS7xxPort::begin(int baudRate, uint8_t options) {
 	// The divider devices the clock frequency to 16x the baud rate
 	int div = interface->oscillatorFreqHz / (baudRate * 16);
 
-	interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, SC16IS7xxInterface::LCR_SPECIAL_START); // 0x80
+    _uartLogger.info("baudRate=%d div=%d options=0x%02x", baudRate, div, options);
+
+	interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, SC16IS7xxInterface::LCR_SPECIAL_ENABLE_DIVISOR_LATCH); // 0x80
 	interface->writeRegister(channel, SC16IS7xxInterface::DLL_REG, div & 0xff);
 	interface->writeRegister(channel, SC16IS7xxInterface::DLH_REG, div >> 8);
-	interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, SC16IS7xxInterface::LCR_SPECIAL_END); // 0xbf
-
-	interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, options & 0x3f);
+	interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, options & 0x3f); // Clears LCR_SPECIAL_ENABLE_DIVISOR_LATCH
 
 	// Enable FIFOs
 	interface->writeRegister(channel, SC16IS7xxInterface::FCR_IIR_REG, 0x07); // Enable FIFO, Clear RX and TX FIFOs
 
-    // Also MCR?
-	
+    // Also MCR? This is only accessible when LCR[7] = 0
+
+    // This is how you access the enhanced register set
+	// interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, SC16IS7xxInterface::LCR_ENABLE_ENHANCED_FEATURE_REG); // 0xbf
+
 	return true;
 }
 
@@ -387,8 +390,9 @@ SC16IS7xxInterface &SC16IS7xxInterface::withSPI(SPIClass *spi, pin_t csPin, size
 }
 
 
-void SC16IS7xxInterface::softwareReset() {
+SC16IS7xxInterface &SC16IS7xxInterface::softwareReset() {
     writeRegister(0, SC16IS7xxInterface::IOCONTROL_REG, 0x08); // Bit 3 = SRESET
+    return *this;
 }
 
 typedef struct {
@@ -400,6 +404,7 @@ ExpectedRegister expectedRegisters[] = {
     { SC16IS7xxInterface::IER_REG, 0x00 },
     { SC16IS7xxInterface::FCR_IIR_REG, 0x01}, 
     { SC16IS7xxInterface::LCR_REG, 0b00011101}, // 0x1D
+    // TODO: Add more registers here, see page 13 of datasheet
 };
 const size_t numExpectedRegisters = sizeof(expectedRegisters) / sizeof(expectedRegisters[0]);
 

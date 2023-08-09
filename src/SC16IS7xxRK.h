@@ -396,7 +396,7 @@ public:
     /**
      * @brief Do a software reset of the device
      */
-    void softwareReset();
+    SC16IS7xxInterface &softwareReset();
 
     /**
      * @brief Do a check to see if the device is set to the expected power-on values 
@@ -438,8 +438,8 @@ public:
 	static const uint8_t EFCR_REG = 0x0f;
 
 	// Special register block
-	static const uint8_t LCR_SPECIAL_START = 0x80;
-	static const uint8_t LCR_SPECIAL_END = 0xbf;
+	static const uint8_t LCR_SPECIAL_ENABLE_DIVISOR_LATCH = 0x80;
+	static const uint8_t LCR_ENABLE_ENHANCED_FEATURE_REG = 0xbf;
 	static const uint8_t DLL_REG = 0x00;
 	static const uint8_t DLH_REG = 0x01;
 

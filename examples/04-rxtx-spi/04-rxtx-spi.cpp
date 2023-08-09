@@ -2,6 +2,10 @@
 
 SerialLogHandler logHandler(LOG_LEVEL_TRACE);
 
+// - Connect the SC16IS7xx by SPI
+// - Use D2 as the SPI CS
+// - Connect SC16IS7xx TX to Particle RX
+// - Connect SC16IS7xx RX to Particle TX
 SC16IS7x0 extSerial;
 
 SYSTEM_THREAD(ENABLED);
@@ -12,12 +16,19 @@ void setup() {
 
     Serial1.begin(9600);
 
-	extSerial
-        .withSPI(&SPI, D2, 8)   // SPI port, CS line, speed in MHz
-        .begin(9600);
+    // Set SPI mode. 2nd parameter is the CS line.
+	extSerial.withSPI(&SPI, D2, 8);   // SPI port, CS line, speed in MHz
     
+    // This is specific to this test program, but you can do this from your
+    // code for additional safety and debugging. It's a good way to check if you
+    // have working SPI communication.
     extSerial.softwareReset();
     extSerial.powerOnCheck();
+
+    // Some of the examples chain begin() right after withSPI() which is fine
+    // as long as you are not doing a softwareReset.
+    extSerial.begin(9600);
+
 }
 
 void loop() {
