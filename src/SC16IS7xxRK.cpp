@@ -365,6 +365,9 @@ SC16IS7xxInterface &SC16IS7xxInterface::withI2C(TwoWire *wire, uint8_t addr) {
         this->i2cAddr += 0x48;
     }
     this->spi = nullptr;
+
+    wire->begin();
+
     return *this;
 }
 
@@ -375,12 +378,48 @@ SC16IS7xxInterface &SC16IS7xxInterface::withSPI(SPIClass *spi, pin_t csPin, size
     // The SC16IS7xx all require MSBFIRST  and MODE0, so 
     this->spiSettings = SPISettings(speedMHz*MHZ, MSBFIRST, SPI_MODE0);
 
+    spi->begin(csPin);
+
     pinMode(this->csPin, OUTPUT);
     digitalWrite(this->csPin, HIGH);
 
     return *this;
 }
 
+
+void SC16IS7xxInterface::softwareReset() {
+    writeRegister(0, SC16IS7xxInterface::IOCONTROL_REG, 0x08); // Bit 3 = SRESET
+}
+
+typedef struct {
+    uint8_t reg;
+    uint8_t value;
+} ExpectedRegister;
+
+ExpectedRegister expectedRegisters[] = {
+    { SC16IS7xxInterface::IER_REG, 0x00 },
+    { SC16IS7xxInterface::FCR_IIR_REG, 0x01}, 
+    { SC16IS7xxInterface::LCR_REG, 0b00011101}, // 0x1D
+};
+const size_t numExpectedRegisters = sizeof(expectedRegisters) / sizeof(expectedRegisters[0]);
+
+bool SC16IS7xxInterface::powerOnCheck() {
+    bool good = true;
+    
+    for(size_t ii = 0; ii < numExpectedRegisters; ii++) {
+        uint8_t value = readRegister(0, expectedRegisters[ii].reg);
+        if (value != expectedRegisters[ii].value) {
+            _uartLogger.info("powerOnCheck register=0x%02x value=%02x expected=%02x",
+                expectedRegisters[ii].reg, value, expectedRegisters[ii].value);
+
+            good = false;
+        }
+    }
+    if (good) {
+        _uartLogger.info("powerOnCheck passed");
+    }
+    return good;
+}
 
 void SC16IS7xxInterface::beginTransaction() {
     if (spi) {

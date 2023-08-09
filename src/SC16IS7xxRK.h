@@ -394,6 +394,17 @@ public:
     SC16IS7xxInterface &withOscillatorFrequency(int freqHz) { this->oscillatorFreqHz = freqHz; return *this; };
 
     /**
+     * @brief Do a software reset of the device
+     */
+    void softwareReset();
+
+    /**
+     * @brief Do a check to see if the device is set to the expected power-on values 
+     * 
+     */
+    bool powerOnCheck();
+
+    /**
      * @brief Read a register
      *
      * @param reg The register number to read. Note that this should be the register 0 - 16, before shifting for channel.
@@ -411,7 +422,7 @@ public:
 
 
 	static const uint8_t RHR_THR_REG = 0x00;
-	static const uint8_t IEF_REG = 0x01;
+	static const uint8_t IER_REG = 0x01;
 	static const uint8_t FCR_IIR_REG = 0x02;
 	static const uint8_t LCR_REG = 0x03;
 	static const uint8_t MCR_REG = 0x04;
