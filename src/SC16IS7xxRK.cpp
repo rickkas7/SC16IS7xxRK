@@ -35,9 +35,9 @@ bool SC16IS7xxBuffer::init(size_t bufSize) {
 size_t SC16IS7xxBuffer::availableToRead() const {
     size_t result;
 
-    lock();
-    result = writeOffset - readOffset;
-    unlock();
+    WITH_LOCK(*this) {
+        result = writeOffset - readOffset;
+    }
 
     return result;
 }
@@ -45,14 +45,14 @@ size_t SC16IS7xxBuffer::availableToRead() const {
 int SC16IS7xxBuffer::read() {
     int result = -1;
 
-    lock();
-    if (readOffset < writeOffset) {
-        result = buf[readOffset++ % bufSize];
-        if (readOffset == writeOffset) {
-            readOffset = writeOffset = 0;
+    WITH_LOCK(*this) {
+        if (readOffset < writeOffset) {
+            result = buf[readOffset++ % bufSize];
+            if (readOffset == writeOffset) {
+                readOffset = writeOffset = 0;
+            }
         }
     }
-    unlock();
 
     return result;
 }
@@ -60,22 +60,22 @@ int SC16IS7xxBuffer::read() {
 int SC16IS7xxBuffer::read(uint8_t *buffer, size_t size) {
     int result = -1;
 
-    lock();
-    if (readOffset < writeOffset) {
-        result = (int)(writeOffset - readOffset);
-        if (result > (int)size) {
-            result = (int)size;
-        }
+    WITH_LOCK(*this) {
+        if (readOffset < writeOffset) {
+            result = (int)(writeOffset - readOffset);
+            if (result > (int)size) {
+                result = (int)size;
+            }
 
-        for(int ii = 0; ii < result; ii++) {
-            buffer[ii] = buf[readOffset++ % bufSize];
-        }
+            for(int ii = 0; ii < result; ii++) {
+                buffer[ii] = buf[readOffset++ % bufSize];
+            }
 
-        if (readOffset == writeOffset) {
-            readOffset = writeOffset = 0;
+            if (readOffset == writeOffset) {
+                readOffset = writeOffset = 0;
+            }
         }
     }
-    unlock();
 
     return result;
 }
@@ -85,7 +85,8 @@ size_t SC16IS7xxBuffer::availableToWrite() const {
 
     if (buf) {
         // Does not require a mutex lock here since availableToRead obtains a lock
-        result = bufSize - availableToRead();
+        // The - 1 factor is required because readOffset == writeOffset means empty buffer, not bufSize bytes
+        result = bufSize - availableToRead() - 1;
     }
     else {
         result = 0;
@@ -100,16 +101,15 @@ size_t SC16IS7xxBuffer::write(const uint8_t *buffer, size_t size) {
         return 0;
     }
 
-    lock();
-    size_t avail = bufSize - (writeOffset - readOffset);
-    if (size > avail) {
-        size = avail;
+    WITH_LOCK(*this) {
+        size_t avail = bufSize - (writeOffset - readOffset) - 1;
+        if (size > avail) {
+            size = avail;
+        }
+        for(size_t ii = 0; ii < size; ii++) {
+            buf[writeOffset++ % bufSize] = buffer[ii];
+        }
     }
-    for(size_t ii = 0; ii < size; ii++) {
-        buf[writeOffset++ % bufSize] = buffer[ii];
-    }
-
-    unlock();
 
     return size;
 }
@@ -119,28 +119,27 @@ void SC16IS7xxBuffer::writeCallback(std::function<void(uint8_t *buffer, size_t &
         return;
     }
 
-    lock();
-    size_t avail = bufSize - (writeOffset - readOffset);
-    
-    while(avail > 0) {
-        size_t writeOffsetInBlock = writeOffset % bufSize;
-        size_t bytesThisBlock = bufSize - writeOffsetInBlock;
-        if (bytesThisBlock > avail) {
-            bytesThisBlock = avail;
-        }
-        size_t callbackSize = bytesThisBlock;
-        callback(&buf[writeOffsetInBlock], callbackSize);
+    WITH_LOCK(*this) {
+        size_t avail = bufSize - (writeOffset - readOffset);
+        
+        while(avail > 0) {
+            size_t writeOffsetInBlock = writeOffset % bufSize;
+            size_t bytesThisBlock = bufSize - writeOffsetInBlock;
+            if (bytesThisBlock > avail) {
+                bytesThisBlock = avail;
+            }
+            size_t callbackSize = bytesThisBlock;
+            callback(&buf[writeOffsetInBlock], callbackSize);
 
-        writeOffset += callbackSize;
-        avail -= callbackSize;
+            writeOffset += callbackSize;
+            avail -= callbackSize;
 
-        if (callbackSize < bytesThisBlock) {
-            // Didn't read a full buffer
-            break;
+            if (callbackSize < bytesThisBlock) {
+                // Didn't read a full buffer. Also handles the end of data case of callbackSize == 0
+                break;
+            }
         }
     }
-
-    unlock();
 
 
 }
@@ -168,13 +167,25 @@ SC16IS7xxPort &SC16IS7xxPort::withBufferedRead(size_t bufferSize, pin_t intPin) 
 
                 }
 
-                readBuffer->lock();
-
-                // Check the LHR
-
-                readBuffer->unlock();
+                size_t rxAvailable = available();
+                if (rxAvailable) {                    
+                    readBuffer->writeCallback([this, &rxAvailable](uint8_t *buffer, size_t &size) {
+                        if (size > rxAvailable) {
+                            size = rxAvailable;
+                        }
+                        if (size > interface->readInternalMax()) {
+                            size = interface->readInternalMax();
+                        }                        
+                        if (size > 0) {
+                            interface->readInternal(channel, buffer, size);
+                            rxAvailable -= size;
+                        }
+                    });
+                }
 
             });
+
+            // Enable interrupts
         }
     }
     
@@ -421,7 +432,16 @@ uint8_t SC16IS7xxInterface::readRegister(uint8_t channel, uint8_t reg) {
         value = (uint8_t) wire->read();
     }
 
-	_uartLogger.trace("readRegister chan=%d reg=%d value=%d", channel, reg, value);
+    switch(reg) {
+        case RXLVL_REG:
+        case TXLVL_REG:
+            // Don't log these because they're called continuously
+            break;
+
+        default:
+        	_uartLogger.trace("readRegister chan=%d reg=%d value=%d", channel, reg, value);
+            break;
+    }
 
     endTransaction();
 
