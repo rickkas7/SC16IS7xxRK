@@ -14,6 +14,9 @@ SYSTEM_THREAD(ENABLED);
 // - Connect SC16IS7xx RX to Particle TX
 SC16IS7x0 extSerial;
 
+// Uncomment this to use SPI and set to the CS pin
+// #define USE_SPI_CS D2
+
 int baudRate = 38400;
 
 Thread *sendingThread;
@@ -30,8 +33,12 @@ void setup()
 
     Serial1.begin(baudRate);
 
-    extSerial.withSPI(&SPI, D2, 8); // SPI port, CS line, speed in MHz
-    // extSerial.withI2C(&Wire, 0);
+#ifdef USE_SPI_CS
+    extSerial.withSPI(&SPI, USE_SPI_CS, 8); // SPI port, CS line, speed in MHz
+#else
+    extSerial.withI2C(&Wire, 0);
+    Wire.setSpeed(CLOCK_SPEED_400KHZ);
+#endif
 
     extSerial.softwareReset();
     extSerial.powerOnCheck();

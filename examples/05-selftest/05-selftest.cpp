@@ -16,6 +16,9 @@ SC16IS7x0 extSerial;
 
 const int SERIAL_RESET_PIN = -1; // -1 to disable
 
+// Uncomment this to use SPI and set to the CS pin
+// #define USE_SPI_CS D2
+
 typedef struct
 {
     int serial;
@@ -57,7 +60,7 @@ OptionsPair options[10] = {
     {SERIAL_7E2, SC16IS7xxPort::OPTIONS_7E2, "7E2"}, // 8
     {SERIAL_7O2, SC16IS7xxPort::OPTIONS_7O2, "7O2"}  // 9
 };
-int bauds[] = {300, 1200, 2400, 4800, 9600, 19200, 57600, 115200};
+int bauds[] = {300, 1200, 2400, 4800, 9600, 14400, 19200, 28800, 38400, 57600, 115200};
 
 #else
 OptionsPair options[10] = {
@@ -95,8 +98,12 @@ void setup()
 
     Serial1.begin(9600);
 
-    extSerial.withSPI(&SPI, D2, 8); // SPI port, CS line, speed in MHz
-    // extSerial.withI2C(&Wire, 0);
+#ifdef USE_SPI_CS
+    extSerial.withSPI(&SPI, USE_SPI_CS, 8); // SPI port, CS line, speed in MHz
+#else
+    extSerial.withI2C(&Wire, 0);
+    Wire.setSpeed(CLOCK_SPEED_400KHZ);
+#endif
 
     extSerial.softwareReset();
     extSerial.powerOnCheck();

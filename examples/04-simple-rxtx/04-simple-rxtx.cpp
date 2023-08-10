@@ -10,6 +10,9 @@ SYSTEM_THREAD(ENABLED);
 // - Connect SC16IS7xx RX to Particle TX
 SC16IS7x0 extSerial;
 
+// Uncomment this to use SPI and set to the CS pin
+// #define USE_SPI_CS D2
+
 void setup()
 {
     // If you want to see the log messages at startup, uncomment the following line
@@ -17,8 +20,12 @@ void setup()
 
     Serial1.begin(9600);
 
-    extSerial.withSPI(&SPI, D2, 8); // SPI port, CS line, speed in MHz
-    // extSerial.withI2C(&Wire, 0);
+#ifdef USE_SPI_CS
+    extSerial.withSPI(&SPI, USE_SPI_CS, 8); // SPI port, CS line, speed in MHz
+#else
+    extSerial.withI2C(&Wire, 0);
+    Wire.setSpeed(CLOCK_SPEED_400KHZ);
+#endif
 
     // This is specific to this test program, but you can do this from your
     // code for additional safety and debugging. It's a good way to check if you
