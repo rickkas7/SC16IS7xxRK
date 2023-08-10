@@ -205,12 +205,14 @@ bool SC16IS7xxPort::begin(int baudRate, uint8_t options) {
 	// The divider devices the clock frequency to 16x the baud rate
 	int div = interface->oscillatorFreqHz / (baudRate * 16);
 
-    _uartLogger.info("baudRate=%d div=%d options=0x%02x", baudRate, div, options);
+    _uartLogger.trace("baudRate=%d div=%d options=0x%02x", baudRate, div, options);
 
 	interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, SC16IS7xxInterface::LCR_SPECIAL_ENABLE_DIVISOR_LATCH); // 0x80
 	interface->writeRegister(channel, SC16IS7xxInterface::DLL_REG, div & 0xff);
 	interface->writeRegister(channel, SC16IS7xxInterface::DLH_REG, div >> 8);
 	interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, options & 0x3f); // Clears LCR_SPECIAL_ENABLE_DIVISOR_LATCH
+
+    // options set break, parity, stop bits, and word length
 
 	// Enable FIFOs
 	interface->writeRegister(channel, SC16IS7xxInterface::FCR_IIR_REG, 0x07); // Enable FIFO, Clear RX and TX FIFOs

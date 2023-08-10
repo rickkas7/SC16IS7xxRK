@@ -4,6 +4,8 @@
 SerialLogHandler logHandler;
 // SerialLogHandler logHandler(LOG_LEVEL_TRACE);
 
+SYSTEM_THREAD(ENABLED);
+
 SC16IS7x0 extSerial;
 
 char out = ' ';
