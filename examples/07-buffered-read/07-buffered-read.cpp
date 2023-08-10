@@ -20,6 +20,7 @@ uint8_t tempBuf[16384];
 Thread *sendingThread;
 size_t writeIndex = 0;
 size_t readIndex = 0;
+bool valueWarned = false;
 
 void sendingThreadFunction(void *param);
 
@@ -63,13 +64,21 @@ void loop()
     if (count > 0) {
         for(int ii = 0; ii < count; ii++, readIndex++) {
             if (readBuf[ii] != tempBuf[readIndex % sizeof(tempBuf)]) {
-                Log.error("value mismatch readIndex=%u got=0x%02x expected=0x%02x count=%d ii=%d", readIndex, readBuf[ii], tempBuf[readIndex % sizeof(tempBuf)], count, ii);
+                if (!valueWarned) {
+                    Log.error("value mismatch readIndex=%u got=0x%02x expected=0x%02x count=%d ii=%d", readIndex, readBuf[ii], tempBuf[readIndex % sizeof(tempBuf)], count, ii);
+                    if (readBuf[ii] == tempBuf[(readIndex + 1) % sizeof(tempBuf)]) {
+                        Log.error("dropped one byte, next expected byte=0x%02x", tempBuf[(readIndex + 1) % sizeof(tempBuf)]);
+                    }
+                    valueWarned = true;
+                }
             }
             if ((readIndex % 10000) == 0) {
-                Log.info("readIndex=%u writeIndex=%u", readIndex, writeIndex);
+                if (!valueWarned) {
+                    Log.info("readIndex=%u writeIndex=%u", readIndex, writeIndex);
+                }
 
                 // This delay would cause data loss if not buffering
-                delay(1000);
+                delay(500);
             }
         }
     }
