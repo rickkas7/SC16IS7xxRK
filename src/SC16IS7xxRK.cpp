@@ -539,7 +539,11 @@ bool SC16IS7xxInterface::readInternal(uint8_t channel, uint8_t *buffer, size_t s
     beginTransaction();
 
     if (spi) {
+        // bit 7 (0x80) = read
+    	spi->transfer(0x80 | RHR_THR_REG << 3 | channel << 1);
     	spi->transfer(NULL, buffer, size, NULL);
+        _uartLogger.trace("readInternal %d bytes", size);
+        result = true;
     }
     else
     if (wire) {

@@ -1,6 +1,7 @@
 #include "SC16IS7xxRK.h"
 
-// Pick a debug level from one of these two:
+// Pick a debug level from one of these two, however, TRACE level is basically
+// unusable due to the large number of log messages
 SerialLogHandler logHandler;
 // SerialLogHandler logHandler(LOG_LEVEL_TRACE);
 
@@ -22,6 +23,28 @@ typedef struct
     const char *name;
 } OptionsPair;
 
+// The maximum universally supported baud rate is 38400.
+//
+// With a 1.8432 MHz crystal, 38400 is possible with a divisor of 3
+// and 115200 with a divisor of 1.
+// You can select 57600 but the frequency is pretty far off and 
+// may not be reliable.
+//
+// With a 3.072 MHz crystal, 38400 is possible. 
+// Above that, the baud rates are non-standard because at
+// 38400 the divisor is 5, so small divisors have weird
+// baud rates.
+
+#if HAL_PLATFORM_NRF52840
+OptionsPair options[4] = {
+    {SERIAL_8N1, SC16IS7xxPort::OPTIONS_8N1, "8N1"}, // 0
+    {SERIAL_8E1, SC16IS7xxPort::OPTIONS_8E1, "8E1"}, // 1
+    {SERIAL_8N2, SC16IS7xxPort::OPTIONS_8N2, "8N2"}, // 2
+    {SERIAL_8E2, SC16IS7xxPort::OPTIONS_8E2, "8E2"}, // 3
+};
+int bauds[] = {1200, 2400, 4800, 9600, 19200, 28800, 38400, 115200};
+
+#elif HAL_PLATFORM_RTL872X
 OptionsPair options[10] = {
     {SERIAL_8N1, SC16IS7xxPort::OPTIONS_8N1, "8N1"}, // 0
     {SERIAL_8E1, SC16IS7xxPort::OPTIONS_8E1, "8E1"}, // 1
@@ -34,8 +57,24 @@ OptionsPair options[10] = {
     {SERIAL_7E2, SC16IS7xxPort::OPTIONS_7E2, "7E2"}, // 8
     {SERIAL_7O2, SC16IS7xxPort::OPTIONS_7O2, "7O2"}  // 9
 };
+int bauds[] = {300, 1200, 2400, 4800, 9600, 19200, 57600, 115200};
 
+#else
+OptionsPair options[10] = {
+    {SERIAL_8N1, SC16IS7xxPort::OPTIONS_8N1, "8N1"}, // 0
+    {SERIAL_8E1, SC16IS7xxPort::OPTIONS_8E1, "8E1"}, // 1
+    {SERIAL_8O1, SC16IS7xxPort::OPTIONS_8O1, "8O1"}, // 2
+    {SERIAL_8N2, SC16IS7xxPort::OPTIONS_8N2, "8N2"}, // 3
+    {SERIAL_8E2, SC16IS7xxPort::OPTIONS_8E2, "8E2"}, // 4
+    {SERIAL_8O2, SC16IS7xxPort::OPTIONS_8O2, "8O2"}, // 5
+    {SERIAL_7E1, SC16IS7xxPort::OPTIONS_7E1, "7E1"}, // 6
+    {SERIAL_7O1, SC16IS7xxPort::OPTIONS_7O1, "7O1"}, // 7
+    {SERIAL_7E2, SC16IS7xxPort::OPTIONS_7E2, "7E2"}, // 8
+    {SERIAL_7O2, SC16IS7xxPort::OPTIONS_7O2, "7O2"}  // 9
+};
 int bauds[] = {1200, 2400, 4800, 9600, 19200, 57600, 115200};
+#endif
+
 
 uint8_t tempBuf[16384];
 
@@ -72,7 +111,7 @@ bool clearAvailable()
 {
     unsigned long start = millis();
 
-    while (Serial1.available())
+    while (Serial1.available() || millis() - start < 1000)
     {
         Serial1.read();
         if (millis() - start > 10000)
@@ -83,7 +122,7 @@ bool clearAvailable()
     }
 
     start = millis();
-    while (extSerial.available())
+    while (extSerial.available() || millis() - start < 1000)
     {
         extSerial.read();
         if (millis() - start > 10000)
@@ -245,6 +284,8 @@ bool testFifoBlock1(bool is7bit)
         }
     }
 
+    clearAvailable();
+
     for (int ch = 0; ch < (int)numToTest; ch++)
     {
         Serial1.write(tempBuf[ch]);
@@ -259,7 +300,7 @@ bool testFifoBlock1(bool is7bit)
             {
                 if (buf2[jj] != tempBuf[ch + jj])
                 {
-                    Log.error("failed line=%d ch=%d jj=%u value=%d", __LINE__, ch, jj, buf2[jj]);
+                    Log.error("failed line=%d ch=%d jj=%u value=%d expected=%d count=%d", __LINE__, ch, jj, buf2[jj], tempBuf[ch + jj], count);
                     return false;
                 }
             }
@@ -430,19 +471,20 @@ void runSelfTest()
                 Log.error("testFifo failed line=%d for baud=%d options %s", __LINE__, bauds[ii], name);
             }
 
-            bResult = testFifoBlock1(is7bit);
-            if (bResult)
-            {
-                Log.info("testFifoBlock1 passed for baud=%d options %s", bauds[ii], name);
-            }
-            else
-            {
-                Log.error("testFifoBlock1 failed line=%d for baud=%d options %s", __LINE__, bauds[ii], name);
-            }
-
-            // This test takes 3 minutes to run at 1200 baud so only run it at 9600 and greater
+            // Only run lengthy tests at higher baud rates
             if (bauds[ii] >= 9600)
             {
+
+                bResult = testFifoBlock1(is7bit);
+                if (bResult)
+                {
+                    Log.info("testFifoBlock1 passed for baud=%d options %s", bauds[ii], name);
+                }
+                else
+                {
+                    Log.error("testFifoBlock1 failed line=%d for baud=%d options %s", __LINE__, bauds[ii], name);
+                }
+
                 bResult = testBlockRead(is7bit);
                 if (bResult)
                 {
