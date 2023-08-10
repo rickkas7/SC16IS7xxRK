@@ -98,6 +98,9 @@ void setup()
     extSerial.withSPI(&SPI, D2, 8); // SPI port, CS line, speed in MHz
     // extSerial.withI2C(&Wire, 0);
 
+    extSerial.softwareReset();
+    extSerial.powerOnCheck();
+
     extSerial.begin(9600);
 }
 
@@ -317,6 +320,7 @@ bool testLarge1()
     srand(0);
 
     // Random test data
+    // tempBuf is currently 16384 bytes 
     for (size_t ii = 0; ii < sizeof(tempBuf); ii++)
     {
         tempBuf[ii] = rand();

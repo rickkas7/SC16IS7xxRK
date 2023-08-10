@@ -180,7 +180,7 @@ public:
      * 
      * @param intPin GPIO connected to the SC16IS7xx IRQ pin. This is recommended for best performance. If not using interrupts, set to PIN_INVALID.
      */
-    SC16IS7xxPort &withBufferedRead(size_t bufferSize, pin_t intPin);
+    SC16IS7xxPort &withBufferedRead(size_t bufferSize, pin_t intPin = PIN_INVALID);
 
 	/**
 	 * @brief Set up the chip. You must do this before reading or writing.
