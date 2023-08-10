@@ -16,7 +16,6 @@ SC16IS7x0 extSerial;
 
 int baudRate = 38400;
 
-uint8_t tempBuf[16384];
 Thread *sendingThread;
 size_t writeIndex = 0;
 size_t readIndex = 0;
@@ -42,14 +41,6 @@ void setup()
     // At 38400 baud, assume a maximum of 4K bytes per second
     extSerial.withBufferedRead(10000);
 
-    // Random test data
-    // tempBuf is currently 16384 bytes 
-    srand(0);
-    for (size_t ii = 0; ii < sizeof(tempBuf); ii++)
-    {
-        tempBuf[ii] = rand();
-    }
-    
     // Start sending thread
     sendingThread = new Thread("sending", sendingThreadFunction, (void *)nullptr, OS_THREAD_PRIORITY_DEFAULT, 512);        
 
@@ -63,12 +54,9 @@ void loop()
     int count = extSerial.read(readBuf, sizeof(readBuf));
     if (count > 0) {
         for(int ii = 0; ii < count; ii++, readIndex++) {
-            if (readBuf[ii] != tempBuf[readIndex % sizeof(tempBuf)]) {
+            if (readBuf[ii] != (readIndex & 0xff)) {
                 if (!valueWarned) {
-                    Log.error("value mismatch readIndex=%u got=0x%02x expected=0x%02x count=%d ii=%d", readIndex, readBuf[ii], tempBuf[readIndex % sizeof(tempBuf)], count, ii);
-                    if (readBuf[ii] == tempBuf[(readIndex + 1) % sizeof(tempBuf)]) {
-                        Log.error("dropped one byte, next expected byte=0x%02x", tempBuf[(readIndex + 1) % sizeof(tempBuf)]);
-                    }
+                    Log.error("value mismatch readIndex=%u got=0x%02x expected=0x%02x count=%d ii=%d", readIndex, readBuf[ii], readIndex & 0xff, count, ii);
                     valueWarned = true;
                 }
             }
@@ -88,7 +76,7 @@ void sendingThreadFunction(void *param)
 {
     while(true) {
         while(Serial1.availableForWrite() > 10) {
-            Serial1.write(tempBuf[writeIndex++ % sizeof(tempBuf)]);
+            Serial1.write(writeIndex++ & 0xff);
         }
         delay(1);
     }
