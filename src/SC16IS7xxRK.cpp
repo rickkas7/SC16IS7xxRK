@@ -12,7 +12,7 @@ SC16IS7xxBuffer::~SC16IS7xxBuffer() {
 void SC16IS7xxBuffer::free() {
     if (buf) {
         delete[] buf;
-        buf = nullptr;        
+        buf = nullptr;
     }
 }
 
@@ -102,6 +102,7 @@ size_t SC16IS7xxBuffer::write(const uint8_t *buffer, size_t size) {
     }
 
     WITH_LOCK(*this) {
+        // The - 1 factor is required because readOffset == writeOffset means empty buffer, not bufSize bytes
         size_t avail = bufSize - (writeOffset - readOffset) - 1;
         if (size > avail) {
             size = avail;
@@ -120,7 +121,8 @@ void SC16IS7xxBuffer::writeCallback(std::function<void(uint8_t *buffer, size_t &
     }
 
     WITH_LOCK(*this) {
-        size_t avail = bufSize - (writeOffset - readOffset);
+        // The - 1 factor is required because readOffset == writeOffset means empty buffer, not bufSize bytes
+        size_t avail = bufSize - (writeOffset - readOffset) - 1;
         
         while(avail > 0) {
             size_t writeOffsetInBlock = writeOffset % bufSize;
@@ -643,7 +645,7 @@ size_t SC16IS7xxInterface::writeInternalMax() const {
 
 void SC16IS7xxInterface::registerThreadFunction(std::function<void()> fn) {
     if (!workerThread) {
-        workerThread = new Thread("uart", threadFunctionStatic, (void *)this, OS_THREAD_PRIORITY_DEFAULT, 512);        
+        workerThread = new Thread("uart", threadFunctionStatic, (void *)this, OS_THREAD_PRIORITY_DEFAULT, 2048);        
     }
     threadFunctions.push_back(fn);
 }
