@@ -10,7 +10,7 @@ This library also supports the SC16IS752 and SC16IS762 dual UART.
 
 #### Chip features
 
-| Chip      | Ports | IrDA       | GPIO  | SPI Max |
+| SC16IS7xx | Ports | IrDA       | GPIO  | SPI Max |
 | :-------- | :---: | :--------: | :---: |:------- |
 | SC16IS740 | 1     |            |       | 4 Mbps  |
 | SC16IS750 | 1     | 115.2 Kbps | 8     | 4 Mbps  |
@@ -21,7 +21,7 @@ This library also supports the SC16IS752 and SC16IS762 dual UART.
 
 #### Chip packages
 
-| Chip         | TSSOP16 | HVQFN24 | TSSOP24 | TSSOP28 | HVQFN32 |
+| SC16IS7xx    | TSSOP16 | HVQFN24 | TSSOP24 | TSSOP28 | HVQFN32 |
 | :----------- | :-----: | :-----: | :-----: | :-----: | :-----: |
 | SC16IS740IPW | &check; |         |         |         |         |
 | SC16IS750IBS |         | &check; |         |         |         |
@@ -32,4 +32,29 @@ This library also supports the SC16IS752 and SC16IS762 dual UART.
 | SC16IS762IPW |         |         |         | &check; |         |
 | SC16IS752IBS |         |         |         |         | &check; |
 | SC16IS762IBS |         |         |         |         | &check; |
+
+
+## Serial connections and flow control
+
+The SC16IS7xx supports both hardware and software flow control, though this library only supports optional hardware flow control.
+
+| SC16IS7xx | Direction | Description | 
+| :-------- | :-------: | :--- |
+| TX        | Output    | UART transmitter output. Connect to other side's RX. |
+| RX        | Input     | UART receiver input. Connecvt to other sides' TX. |
+| /CTS      | Input     | UART clear to send (active LOW). Other side is ready to receive data when LOW. |
+| /RTS      | Output    | UART request to send (active LOW). The SC16IS7xx can receive data when LOW. |
+| /DSR      |           | Data set ready. Optional flow control pin manually controlled as GPIO. |
+| /DTR      |           | Data terminal ready. Optional flow control pin manually controlled as GPIO. |
+| /CD       |           | Carrier detect. Optional flow control pin manually controlled as GPIO. |
+| /RI       |           | Ring indictor. Optional flow control pin manually controlled as GPIO. |
+
+Both the RX/TX pair and CTS/RTS pair are typically crossed between the two sides of the UART serial link. In other words, 
+RX on one side connects to TX on the other and vice-versa.
+
+The last four flow control signals are rarely used, but if you need them, you can manually control the direction and level of those pins as GPIO. 
+
+Note that the serial outputs are 3.3V and the inputs must be 3.3V or 5V. If you are connecting to RS-232 or RS-485 you need the appropriate driver chip to shift the levels. 
+
+Automatic hardware flow control (CTS/RTS) can
 

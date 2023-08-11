@@ -15,7 +15,7 @@ SYSTEM_THREAD(ENABLED);
 SC16IS7x0 extSerial;
 
 // Uncomment this to use SPI and set to the CS pin
-#define USE_SPI_CS D2
+#define USE_SPI_CS D4
 
 // Maximum supported baud rate is typically 38400.
 int baudRate = 38400;

@@ -195,8 +195,18 @@ SC16IS7xxPort &SC16IS7xxPort::withBufferedRead(size_t bufferSize, pin_t intPin) 
     return *this;
 }
 
+SC16IS7xxPort &SC16IS7xxPort::withTransmissionControlLevels(uint8_t haltLevel, uint8_t resumeLevel) {
+    if (haltLevel > resumeLevel) {
+        tcr = (uint8_t)((haltLevel & 0xF) << 4 | (resumeLevel & 0xf));
+    }
+    else {
+        _uartLogger.error("invalid parameters to withTransmissionControlLevels");
+    }
+    return *this;
+}
 
-bool SC16IS7xxPort::begin(int baudRate, uint8_t options) {
+
+bool SC16IS7xxPort::begin(int baudRate, uint32_t options) {
 
 	// My test board uses this oscillator
 	// KC3225K1.84320C1GE00
@@ -207,22 +217,57 @@ bool SC16IS7xxPort::begin(int baudRate, uint8_t options) {
 	// The divider devices the clock frequency to 16x the baud rate
 	int div = interface->oscillatorFreqHz / (baudRate * 16);
 
-    _uartLogger.trace("baudRate=%d div=%d options=0x%02x", baudRate, div, options);
+    _uartLogger.trace("baudRate=%d div=%d options=0x%08lx", baudRate, div, options);
+
+    // options set break, parity, stop bits, and word length
+    lcr = (uint8_t)(options & 0x3f);
 
 	interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, SC16IS7xxInterface::LCR_SPECIAL_ENABLE_DIVISOR_LATCH); // 0x80
 	interface->writeRegister(channel, SC16IS7xxInterface::DLL_REG, div & 0xff);
 	interface->writeRegister(channel, SC16IS7xxInterface::DLH_REG, div >> 8);
-	interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, options & 0x3f); // Clears LCR_SPECIAL_ENABLE_DIVISOR_LATCH
+	interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, lcr); // Clears LCR_SPECIAL_ENABLE_DIVISOR_LATCH
 
-    // options set break, parity, stop bits, and word length
 
 	// Enable FIFOs
 	interface->writeRegister(channel, SC16IS7xxInterface::FCR_IIR_REG, 0x07); // Enable FIFO, Clear RX and TX FIFOs
 
-    // Also MCR? This is only accessible when LCR[7] = 0
 
-    // This is how you access the enhanced register set
-	// interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, SC16IS7xxInterface::LCR_ENABLE_ENHANCED_FEATURE_REG); // 0xbf
+    // Hardware flow control
+
+    // EFR can only be set when Enhanced Feature Registers are only accessible when LCR = 0xBF
+    interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, SC16IS7xxInterface::LCR_ENABLE_ENHANCED_FEATURE_REG); // 0xbf
+
+    // Set EFR[4] = 1 and MCR[2] = 1, required to set TCR
+    // Basically, TCR and MSR are the same register, and the purpose is dependent on EFR[4]
+    efr = 0b00010000; // Enable enhanced functions
+    interface->writeRegister(channel, SC16IS7xxInterface::EFR_REG, efr);
+
+    mcr = 0;
+    if ((options & OPTIONS_FLOW_CONTROL_RTS_CTS) != 0) {
+        mcr |= 0b00000100; // TCR and TLR enable MCR[2]
+    }
+    interface->writeRegister(channel, SC16IS7xxInterface::MCR_REG, mcr);
+
+    // TCR must be set before flow control is enabled in the EFR
+    // tcr is set from withTransmissionControlLevels. Default value is halt at 60, resume at 30.
+    // TCR can only be set when MCR[2] = 1 and EFR[4] = 1, otherwise it is the MSR (modem status register)
+    interface->writeRegister(channel, SC16IS7xxInterface::TCR_REG, tcr);
+
+    // Enable RTS or CTS. Note that the EFR must be set two separate times
+    // Clear enhanced function enable EFR[4] so TCR goes back to being MSR now that TCR is set
+    efr = 0;
+    if ((options & OPTIONS_FLOW_CONTROL_RTS) != 0) {
+        // RTS flow enable EFR[6] and enhanced function enable EFR[4]
+        efr |= 0b01000000;
+    }  
+    if ((options & OPTIONS_FLOW_CONTROL_CTS) != 0) {
+        // CTS flow enable EFR[7] and enhanced function enable EFR[4]
+        efr |= 0b10000000;            
+    }
+    interface->writeRegister(channel, SC16IS7xxInterface::EFR_REG, efr);
+
+    interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, lcr); // Clears enhanced feature mode
+
 
 	return true;
 }
@@ -423,6 +468,8 @@ bool SC16IS7xxInterface::powerOnCheck() {
 
             good = false;
         }
+
+        // TODO: Try writing and reading scratchpad register (SPR)
     }
     if (good) {
         _uartLogger.info("powerOnCheck passed");

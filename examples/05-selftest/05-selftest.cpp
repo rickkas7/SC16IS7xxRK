@@ -17,7 +17,7 @@ SC16IS7x0 extSerial;
 const int SERIAL_RESET_PIN = -1; // -1 to disable
 
 // Uncomment this to use SPI and set to the CS pin
-// #define USE_SPI_CS D2
+// #define USE_SPI_CS D4
 
 typedef struct
 {

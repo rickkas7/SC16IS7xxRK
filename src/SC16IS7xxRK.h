@@ -182,6 +182,15 @@ public:
      */
     SC16IS7xxPort &withBufferedRead(size_t bufferSize, pin_t intPin = PIN_INVALID);
 
+    /**
+     * @brief Sets the auto RTS hardware flow control levels. Call before begin() to change levels
+     * 
+     * @param haltLevel Number of characters in receive FIFO to halt transmission. Default: 60.
+     * @param resumeLevel Number of characters in receivee FIFO to resume transmission. Default: 30.
+     * @return SC16IS7xxPort& 
+     */
+    SC16IS7xxPort &withTransmissionControlLevels(uint8_t haltLevel, uint8_t resumeLevel);
+
 	/**
 	 * @brief Set up the chip. You must do this before reading or writing.
 	 *
@@ -201,7 +210,9 @@ public:
 	 * OPTIONS_7N1, OPTIONS_7E1, OPTIONS_7O1
 	 * OPTIONS_7N2, OPTIONS_7E2, OPTIONS_7O2
 	 */
-	bool begin(int baudRate, uint8_t options = OPTIONS_8N1);
+	bool begin(int baudRate, uint32_t options = OPTIONS_8N1);
+
+
 
 	/**
 	 * @brief Defines what should happen when calls to write()/print()/println()/printlnf() that would overrun the buffer.
@@ -293,21 +304,27 @@ public:
 	 */
 	virtual int read(uint8_t *buffer, size_t size);
 
-	static const uint8_t OPTIONS_8N1 = 0b000011; //!< 8 data bits, no parity, 1 stop bit
-	static const uint8_t OPTIONS_8E1 = 0b011011; //!< 8 data bits, even parity, 1 stop bit
-	static const uint8_t OPTIONS_8O1 = 0b001011; //!< 8 data bits, odd parity, 1 stop bit
+	static const uint32_t OPTIONS_8N1 = 0b000011; //!< 8 data bits, no parity, 1 stop bit
+	static const uint32_t OPTIONS_8E1 = 0b011011; //!< 8 data bits, even parity, 1 stop bit
+	static const uint32_t OPTIONS_8O1 = 0b001011; //!< 8 data bits, odd parity, 1 stop bit
 
-	static const uint8_t OPTIONS_8N2 = 0b000111; //!< 8 data bits, no parity, 2 stop bits
-	static const uint8_t OPTIONS_8E2 = 0b011111; //!< 8 data bits, even parity, 2 stop bits
-	static const uint8_t OPTIONS_8O2 = 0b001111; //!< 8 data bits, odd parity, 2 stop bits
+	static const uint32_t OPTIONS_8N2 = 0b000111; //!< 8 data bits, no parity, 2 stop bits
+	static const uint32_t OPTIONS_8E2 = 0b011111; //!< 8 data bits, even parity, 2 stop bits
+	static const uint32_t OPTIONS_8O2 = 0b001111; //!< 8 data bits, odd parity, 2 stop bits
 
-	static const uint8_t OPTIONS_7N1 = 0b000010; //!< 7 data bits, no parity, 1 stop bit
-	static const uint8_t OPTIONS_7E1 = 0b011010; //!< 7 data bits, even parity, 1 stop bit
-	static const uint8_t OPTIONS_7O1 = 0b001010; //!< 7 data bits, odd parity, 1 stop bit
+	static const uint32_t OPTIONS_7N1 = 0b000010; //!< 7 data bits, no parity, 1 stop bit
+	static const uint32_t OPTIONS_7E1 = 0b011010; //!< 7 data bits, even parity, 1 stop bit
+	static const uint32_t OPTIONS_7O1 = 0b001010; //!< 7 data bits, odd parity, 1 stop bit
 
-	static const uint8_t OPTIONS_7N2 = 0b000110; //!< 7 data bits, no parity, 2 stop bits
-	static const uint8_t OPTIONS_7E2 = 0b011110; //!< 7 data bits, even parity, 2 stop bits
-	static const uint8_t OPTIONS_7O2 = 0b001110; //!< 7 data bits, odd parity, 2 stop bits
+	static const uint32_t OPTIONS_7N2 = 0b000110; //!< 7 data bits, no parity, 2 stop bits
+	static const uint32_t OPTIONS_7E2 = 0b011110; //!< 7 data bits, even parity, 2 stop bits
+	static const uint32_t OPTIONS_7O2 = 0b001110; //!< 7 data bits, odd parity, 2 stop bits
+
+	static const uint32_t OPTIONS_FLOW_CONTROL_NONE    = 0b00000000; //!< No hardware flow control (default)
+	static const uint32_t OPTIONS_FLOW_CONTROL_RTS     = 0b01000000; //!< RTS flow control (/RTS output indicates this side can receive data)
+	static const uint32_t OPTIONS_FLOW_CONTROL_CTS     = 0b10000000; //!< CTS flow control (/CTS input indicates the other side can receive data)
+	static const uint32_t OPTIONS_FLOW_CONTROL_RTS_CTS = 0b11000000; //!< Hardware flow control in both directions
+
 
 protected:
     /**
@@ -334,6 +351,10 @@ protected:
 	uint8_t peekByte = 0; //!< The byte that was read if hasPeek == true
 	bool writeBlocksWhenFull = true;
     uint8_t channel = 0; //!< Chip channel number for this port (0 or 1)
+    uint8_t lcr = 0; //<! Value of the LCR register, set from begin()
+    uint8_t efr = 0; //<! Value of the EFR register, set from begin()
+    uint8_t mcr = 0; //!< Value of the MCR register, set from begin()
+    uint8_t tcr = (uint8_t)(30 << 4 | 60); //!< Default TCR value for hardware flow control (resume 30, halt 60)
     SC16IS7xxInterface *interface = nullptr; //!< Interface object for this chip
 
     SC16IS7xxBuffer *readBuffer = nullptr; //!< Buffer object when using withReadBuffer
@@ -441,6 +462,7 @@ public:
 	static const uint8_t MCR_REG = 0x04; //!< Modem Control Register (MCR)
 	static const uint8_t LSR_REG = 0x05; //!< Line Status Register (LSR)
 	static const uint8_t MSR_REG = 0x06; //!< Modem Status Register (MSR)
+	static const uint8_t TCR_REG = 0x06; //!< Transmission control register (TCR) when MCR[2] = 1 and EFR[4] = 1
 	static const uint8_t SPR_REG = 0x07; //!< Scratchpad Register (SPR)
 	static const uint8_t TXLVL_REG = 0x08; //!< Transmit FIFO Level register
 	static const uint8_t RXLVL_REG = 0x09; //!< Receive FIFO Level register
