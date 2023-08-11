@@ -293,24 +293,31 @@ public:
 	 */
 	virtual int read(uint8_t *buffer, size_t size);
 
-	static const uint8_t OPTIONS_8N1 = 0b000011;
-	static const uint8_t OPTIONS_8E1 = 0b011011;
-	static const uint8_t OPTIONS_8O1 = 0b001011;
+	static const uint8_t OPTIONS_8N1 = 0b000011; //!< 8 data bits, no parity, 1 stop bit
+	static const uint8_t OPTIONS_8E1 = 0b011011; //!< 8 data bits, even parity, 1 stop bit
+	static const uint8_t OPTIONS_8O1 = 0b001011; //!< 8 data bits, odd parity, 1 stop bit
 
-	static const uint8_t OPTIONS_8N2 = 0b000111;
-	static const uint8_t OPTIONS_8E2 = 0b011111;
-	static const uint8_t OPTIONS_8O2 = 0b001111;
+	static const uint8_t OPTIONS_8N2 = 0b000111; //!< 8 data bits, no parity, 2 stop bits
+	static const uint8_t OPTIONS_8E2 = 0b011111; //!< 8 data bits, even parity, 2 stop bits
+	static const uint8_t OPTIONS_8O2 = 0b001111; //!< 8 data bits, odd parity, 2 stop bits
 
-	static const uint8_t OPTIONS_7N1 = 0b000010;
-	static const uint8_t OPTIONS_7E1 = 0b011010;
-	static const uint8_t OPTIONS_7O1 = 0b001010;
+	static const uint8_t OPTIONS_7N1 = 0b000010; //!< 7 data bits, no parity, 1 stop bit
+	static const uint8_t OPTIONS_7E1 = 0b011010; //!< 7 data bits, even parity, 1 stop bit
+	static const uint8_t OPTIONS_7O1 = 0b001010; //!< 7 data bits, odd parity, 1 stop bit
 
-	static const uint8_t OPTIONS_7N2 = 0b000110;
-	static const uint8_t OPTIONS_7E2 = 0b011110;
-	static const uint8_t OPTIONS_7O2 = 0b001110;
+	static const uint8_t OPTIONS_7N2 = 0b000110; //!< 7 data bits, no parity, 2 stop bits
+	static const uint8_t OPTIONS_7E2 = 0b011110; //!< 7 data bits, even parity, 2 stop bits
+	static const uint8_t OPTIONS_7O2 = 0b001110; //!< 7 data bits, odd parity, 2 stop bits
 
 protected:
+    /**
+     * @brief Protected constructor; you never construct one of these directly
+     */
     SC16IS7xxPort() {};
+
+    /**
+     * @brief Protected destructor; you never delete one of these directly
+     */
     virtual ~SC16IS7xxPort() {};
 
     /**
@@ -323,15 +330,15 @@ protected:
      */
     SC16IS7xxPort& operator=(const SC16IS7xxPort&) = delete;
 
-	bool hasPeek = false;
-	uint8_t peekByte = 0;
+	bool hasPeek = false; //!< There is a byte from the last peek() available
+	uint8_t peekByte = 0; //!< The byte that was read if hasPeek == true
 	bool writeBlocksWhenFull = true;
-    uint8_t channel = 0;
-    SC16IS7xxInterface *interface = nullptr;
+    uint8_t channel = 0; //!< Chip channel number for this port (0 or 1)
+    SC16IS7xxInterface *interface = nullptr; //!< Interface object for this chip
 
-    SC16IS7xxBuffer *readBuffer = nullptr;
+    SC16IS7xxBuffer *readBuffer = nullptr; //!< Buffer object when using withReadBuffer
 
-    friend class SC16IS7x2;
+    friend class SC16IS7x2; //!< The SC16IS7x0 derives from this, but the SC16IS7x2 has this ports as member variables
 };
 
 /**
@@ -345,8 +352,8 @@ public:
     /**
      * @brief Chip is connected by I2C
      * 
-     * @param wire The I2C port, typically &Wire but could be &Wire1, etc.
-     * @param addr I2C address (see note below)
+     * @param wire The I2C port, typically &Wire but could be &Wire1, etc. Default is Wire (primary I2C on D0/D1).
+     * @param addr I2C address (see note below). Default is both 0x48, A0=HIGH, A1=HIGH.
      * @return SC16IS7xxInterface& 
      * 
      * A1   A0   Index  I2C Address
@@ -371,8 +378,14 @@ public:
      * Note that the NXP datasheet addresses must be divided by 2 because they include the
      * R/W bit in the address, and Particle and Arduino do not. That's why the datasheet
      * lists the starting address as 0x90 instead of 0x48.
+     * 
+     * The most common scenarios are both high (addr = 0x48 or 0x00) or both low (addr = 0x4d or 0x05)
+     * 
+     * Because of the way I2C works, the speed is selected per bus and not per I2C slave
+     * device like SPI. If all of your I2C devices work at 400 kHz, using `Wire.setSpeed(CLOCK_SPEED_400KHZ)`
+     * is recommended for better performance.
      */
-    SC16IS7xxInterface &withI2C(TwoWire *wire, uint8_t addr = 0);
+    SC16IS7xxInterface &withI2C(TwoWire *wire = &Wire, uint8_t addr = 0);
 
     /**
      * @brief Chip is connected by SPI
@@ -421,34 +434,34 @@ public:
 	bool writeRegister(uint8_t channel, uint8_t reg, uint8_t value);
 
 
-	static const uint8_t RHR_THR_REG = 0x00;
-	static const uint8_t IER_REG = 0x01;
-	static const uint8_t FCR_IIR_REG = 0x02;
-	static const uint8_t LCR_REG = 0x03;
-	static const uint8_t MCR_REG = 0x04;
-	static const uint8_t LSR_REG = 0x05;
-	static const uint8_t MSR_REG = 0x06;
-	static const uint8_t SPR_REG = 0x07;
-	static const uint8_t TXLVL_REG = 0x08;
-	static const uint8_t RXLVL_REG = 0x09;
-	static const uint8_t IODIR_REG = 0x0a;
-	static const uint8_t IOSTATE_REG = 0x0b;
-	static const uint8_t IOINTENA_REG = 0x0c;
-	static const uint8_t IOCONTROL_REG = 0x0e;
-	static const uint8_t EFCR_REG = 0x0f;
+	static const uint8_t RHR_THR_REG = 0x00; //!< Receive Holding Register (RHR) and Transmit Holding Register (THR)
+	static const uint8_t IER_REG = 0x01;  //!< Interrupt Enable Register (IER)
+	static const uint8_t FCR_IIR_REG = 0x02; //!< Interrupt Identification Register (IIR) and FIFO Control Register (FCR)
+	static const uint8_t LCR_REG = 0x03; //!< Line Control Register (LCR)
+	static const uint8_t MCR_REG = 0x04; //!< Modem Control Register (MCR)
+	static const uint8_t LSR_REG = 0x05; //!< Line Status Register (LSR)
+	static const uint8_t MSR_REG = 0x06; //!< Modem Status Register (MSR)
+	static const uint8_t SPR_REG = 0x07; //!< Scratchpad Register (SPR)
+	static const uint8_t TXLVL_REG = 0x08; //!< Transmit FIFO Level register
+	static const uint8_t RXLVL_REG = 0x09; //!< Receive FIFO Level register
+	static const uint8_t IODIR_REG = 0x0a; //!< I/O pin Direction register
+	static const uint8_t IOSTATE_REG = 0x0b; //!< I/O pins State register
+	static const uint8_t IOINTENA_REG = 0x0c; //!< I/O Interrupt Enable register
+	static const uint8_t IOCONTROL_REG = 0x0e; //!< I/O pins Control register
+	static const uint8_t EFCR_REG = 0x0f; //!< Extra Features Control Register
 
 	// Special register block
-	static const uint8_t LCR_SPECIAL_ENABLE_DIVISOR_LATCH = 0x80;
-	static const uint8_t LCR_ENABLE_ENHANCED_FEATURE_REG = 0xbf;
-	static const uint8_t DLL_REG = 0x00;
-	static const uint8_t DLH_REG = 0x01;
+	static const uint8_t LCR_SPECIAL_ENABLE_DIVISOR_LATCH = 0x80; //!< 
+	static const uint8_t LCR_ENABLE_ENHANCED_FEATURE_REG = 0xbf; //!< 
+	static const uint8_t DLL_REG = 0x00; //!< Divisor Latch LSB (DLL)
+	static const uint8_t DLH_REG = 0x01; //!< Divisor Latch MSB (DLH)
 
 	// Enhanced register set
-	static const uint8_t EFR_REG = 0x02;
-	static const uint8_t XON1_REG = 0x04;
-	static const uint8_t XON2_REG = 0x05;
-	static const uint8_t XOFF1_REG = 0x06;
-	static const uint8_t XOFF2_REG = 0x07;
+	static const uint8_t EFR_REG = 0x02; //!< Enhanced Features Register (EFR)
+	static const uint8_t XON1_REG = 0x04; //!< Xon1 word
+	static const uint8_t XON2_REG = 0x05; //!< Xon2 word
+	static const uint8_t XOFF1_REG = 0x06; //!< Xoff1 word
+	static const uint8_t XOFF2_REG = 0x07; //!< Xoff2 word
 
 protected:
     SC16IS7xxInterface() {};
