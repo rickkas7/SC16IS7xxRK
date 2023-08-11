@@ -19,7 +19,7 @@ void setup()
     waitFor(Serial.isConnected, 10000);
 
 #ifdef USE_SPI_CS
-    extSerial.withSPI(&SPI, USE_SPI_CS, 8); // SPI port, CS line, speed in MHz
+    extSerial.withSPI(&SPI, USE_SPI_CS, 4); // SPI port, CS line, speed in MHz
 #else
     extSerial.withI2C(&Wire, 0);
     Wire.setSpeed(CLOCK_SPEED_400KHZ);

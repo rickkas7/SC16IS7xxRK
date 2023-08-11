@@ -18,7 +18,7 @@ SC16IS7x0 extSerial;
 #define USE_SPI_CS D2
 
 // Maximum supported baud rate is typically 38400.
-int baudRate = 19200;
+int baudRate = 38400;
 
 Thread *sendingThread;
 size_t writeIndex = 0;
@@ -36,7 +36,7 @@ void setup()
     Serial1.begin(baudRate);
 
 #ifdef USE_SPI_CS
-    extSerial.withSPI(&SPI, USE_SPI_CS, 8); // SPI port, CS line, speed in MHz
+    extSerial.withSPI(&SPI, USE_SPI_CS, 4); // SPI port, CS line, speed in MHz
 #else
     extSerial.withI2C(&Wire, 0);
     Wire.setSpeed(CLOCK_SPEED_400KHZ);
@@ -59,6 +59,7 @@ void loop()
     if (!sendingThread && Particle.connected()) {
         // Start sending thread
         sendingThread = new Thread("sending", sendingThreadFunction, (void *)nullptr, OS_THREAD_PRIORITY_DEFAULT, 512);
+        Log.info("starting test!");
     }
 
     uint8_t readBuf[64];

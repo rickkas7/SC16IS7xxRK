@@ -464,8 +464,8 @@ public:
 	static const uint8_t XOFF2_REG = 0x07; //!< Xoff2 word
 
 protected:
-    SC16IS7xxInterface() {};
-    virtual ~SC16IS7xxInterface() {};
+    SC16IS7xxInterface() {}; //!< You cannot instantiate this directly
+    virtual ~SC16IS7xxInterface() {}; //!< You cannot delete this directly
 
     /**
      * @brief This class is not copyable
@@ -537,17 +537,16 @@ protected:
     static void threadFunctionStatic(void *param);
 
 
-    TwoWire *wire = nullptr;
-    uint8_t i2cAddr = 0;
-    SPIClass *spi = nullptr;
-    pin_t csPin;
-    SPISettings spiSettings;
-    int oscillatorFreqHz = 1843200; // 1.8432 MHz
-    Thread *workerThread = nullptr;
-    std::vector<std::function<void()>> threadFunctions;
+    TwoWire *wire = nullptr; //!< When using I2C, the Wire object, typically Wire, but could be Wire1.
+    uint8_t i2cAddr = 0; //!< When using I2C, the I2C address of the SC16IS7xx chip.
+    SPIClass *spi = nullptr; //!< When using SPI, the SPI object (typically SPI or SPI1).
+    pin_t csPin = PIN_INVALID; //!< When using SPI, the CS pin (required for SPI)
+    SPISettings spiSettings; //!< When using SPI, the SPISettings (bit rate, bit order, mode).
+    int oscillatorFreqHz = 1843200; //!< Oscillator frequency. Default is 1.8432 MHz, can also be 3072000 (3.072 MHz).
+    Thread *workerThread = nullptr; //!< Worker thread, created if registerThreadFunction() is called.
+    std::vector<std::function<void()>> threadFunctions; //!< Functions to call from the worker thread, added using registerThreadFunction()
 
-    friend class SC16IS7xxPort;
-
+    friend class SC16IS7xxPort; //!< The port object calls the interface object and uses the register contents
 };
 
 /**
@@ -559,9 +558,16 @@ public:
     /**
      * @brief Default constructor
      * 
-     * You typically allocate one of these per 
+     * You typically allocate one of these per chip as global variables.
      */
     SC16IS7x0();
+
+    /**
+     * @brief Since the object is typically a global variable, it is not intended to be deleted
+     * 
+     * If you delete this object and are using the worker thread, the device will probably crash since the
+     * thread won't be stopped.
+     */
     virtual ~SC16IS7x0() {};
 
 /**
@@ -593,6 +599,8 @@ public:
      * Note that the NXP datasheet addresses must be divided by 2 because they include the
      * R/W bit in the address, and Particle and Arduino do not. That's why the datasheet
      * lists the starting address as 0x90 instead of 0x48.
+     *
+     * All models support speeds up to 400 Kbit/sec over I2C.
      */
     SC16IS7x0 &withI2C(TwoWire *wire, uint8_t addr = 0) { SC16IS7xxInterface::withI2C(wire, addr); return *this; };
 
@@ -600,11 +608,13 @@ public:
      * @brief Chip is connected by SPI
      * 
      * @param spi The SPI port. Typically &SPI but could be &SPI1, etc.
-     * @param csPin The pin used for chip select
-     * @param speedMHz The SPI bus speed in MHz.
+     * @param csPin The pin used for chip select. This is required.
+     * @param speedMHz The SPI bus speed in MHz. The default is 4 Kbit/sec., which works with all chips.
      * @return SC16IS7xxInterface& 
+     * 
+     * The SC16IS740 and SC16IS750 supports SPI speeds up to 4 Mbit/sec. The SC16IS760 supports SPI speeds up to 15 Mbit/sec.
      */
-    SC16IS7x0 &withSPI(SPIClass *spi, pin_t csPin, size_t speedMHz) { SC16IS7xxInterface::withSPI(spi, csPin, speedMHz); return *this; };
+    SC16IS7x0 &withSPI(SPIClass *spi, pin_t csPin, size_t speedMHz = 4) { SC16IS7xxInterface::withSPI(spi, csPin, speedMHz); return *this; };
 
     /**
      * @brief Convenience accessor for the port object
@@ -654,12 +664,19 @@ public:
     /**
      * @brief Default constructor
      * 
-     * You typically allocate one of these per 
+     * You typically allocate one of these per chip as global variables.
      */
     SC16IS7x2();
+
+    /**
+     * @brief Since the object is typically a global variable, it is not intended to be deleted
+     * 
+     * If you delete this object and are using the worker thread, the device will probably crash since the
+     * thread won't be stopped.
+     */
     virtual ~SC16IS7x2() {};
 
-/**
+    /**
      * @brief Chip is connected by I2C
      * 
      * @param wire The I2C port, typically &Wire but could be &Wire1, etc.
@@ -688,6 +705,8 @@ public:
      * Note that the NXP datasheet addresses must be divided by 2 because they include the
      * R/W bit in the address, and Particle and Arduino do not. That's why the datasheet
      * lists the starting address as 0x90 instead of 0x48.
+     * 
+     * The SC16IS752 and SC16IS762 support up to 400 Kbit/sec I2C.
      */
     SC16IS7x2 &withI2C(TwoWire *wire, uint8_t addr = 0) { SC16IS7xxInterface::withI2C(wire, addr); return *this; };
 
@@ -695,11 +714,13 @@ public:
      * @brief Chip is connected by SPI
      * 
      * @param spi The SPI port. Typically &SPI but could be &SPI1, etc.
-     * @param csPin The pin used for chip select
-     * @param speedMHz The SPI bus speed in MHz.
+     * @param csPin The pin used for chip select. This is required.
+     * @param speedMHz The SPI bus speed in MHz. Default is 4.
      * @return SC16IS7xxInterface& 
+     * 
+     * The SC16IS752 supports SPI speeds up to 4 Mbit/sec. The SC16IS762 supports SPI speeds up to 15 Mbit/sec.
      */
-    SC16IS7x2 &withSPI(SPIClass *spi, pin_t csPin, size_t speedMHz) { SC16IS7xxInterface::withSPI(spi, csPin, speedMHz); return *this; };
+    SC16IS7x2 &withSPI(SPIClass *spi, pin_t csPin, size_t speedMHz = 4) { SC16IS7xxInterface::withSPI(spi, csPin, speedMHz); return *this; };
 
     /**
      * @brief Gets the port object for port A. This is required to access UART features.
@@ -736,7 +757,7 @@ protected:
     SC16IS7x2& operator=(const SC16IS7x2&) = delete;
 
 
-    SC16IS7xxPort ports[2];
+    SC16IS7xxPort ports[2]; //!< The port objects. The SC16IS7x2 has the port as member variables but the SC16IS7x0 derives from port since there is only one.
 };
 
 

@@ -15,7 +15,7 @@ void setup() {
     waitFor(Serial.isConnected, 10000);
 
 	extSerial
-        .withSPI(&SPI, D2, 8)   // SPI port, CS line, speed in MHz
+        .withSPI(&SPI, D2, 4)   // SPI port, CS line, speed in MHz
         .begin(9600);
 }
 
