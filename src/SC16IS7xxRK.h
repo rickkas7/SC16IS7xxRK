@@ -209,6 +209,11 @@ public:
 	 * OPTIONS_8N2, OPTIONS_8E2, OPTIONS_8O2
 	 * OPTIONS_7N1, OPTIONS_7E1, OPTIONS_7O1
 	 * OPTIONS_7N2, OPTIONS_7E2, OPTIONS_7O2
+     * 
+     * Unlike the Device OS options, the SC16IS7xx OPTIONS_8N1 value is not 0! If you omit are enabling
+     * hardware flow control be sure to set it like 
+     * SC16IS7xxPort::OPTIONS_8N1 | SC16IS7xxPort::OPTIONS_FLOW_CONTROL_RTS_CTS
+     * If you leave off the OPTIONS_8N1 the output will be 5N1, not 8N1!
 	 */
 	bool begin(int baudRate, uint32_t options = OPTIONS_8N1);
 
@@ -465,7 +470,8 @@ public:
 	static const uint8_t LSR_REG = 0x05; //!< Line Status Register (LSR)
 	static const uint8_t MSR_REG = 0x06; //!< Modem Status Register (MSR)
 	static const uint8_t TCR_REG = 0x06; //!< Transmission control register (TCR) when MCR[2] = 1 and EFR[4] = 1
-	static const uint8_t SPR_REG = 0x07; //!< Scratchpad Register (SPR)
+	static const uint8_t SPR_REG = 0x07; //!< Scratchpad Register (SPR) - if MCR[2] = 1 and EFR[4] = 1
+	static const uint8_t TLR_REG = 0x07; //!< Transmission level register (TLR) - if MCR[2] = 1 and EFR[4] = 1
 	static const uint8_t TXLVL_REG = 0x08; //!< Transmit FIFO Level register
 	static const uint8_t RXLVL_REG = 0x09; //!< Receive FIFO Level register
 	static const uint8_t IODIR_REG = 0x0a; //!< I/O pin Direction register

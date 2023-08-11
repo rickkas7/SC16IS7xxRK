@@ -55,7 +55,10 @@ void setup()
     extSerial.softwareReset();
     extSerial.powerOnCheck();
 
-    extSerial.begin(baudRate, SC16IS7xxPort::OPTIONS_FLOW_CONTROL_RTS_CTS);
+    // It's very important that you set OPTIONS_8N1 in addition to enabling flow control!
+    // Unlike the Device OS options, the SC16IS7xx OPTIONS_8N1 value is not 0! If you omit it,
+    // the output will be 5N1, not 8N1!
+    extSerial.begin(baudRate, SC16IS7xxPort::OPTIONS_8N1 | SC16IS7xxPort::OPTIONS_FLOW_CONTROL_RTS_CTS);
 
 
 }

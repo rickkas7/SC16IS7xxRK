@@ -219,8 +219,6 @@ bool SC16IS7xxPort::begin(int baudRate, uint32_t options) {
 
     _uartLogger.trace("baudRate=%d div=%d options=0x%08lx", baudRate, div, options);
 
-//#define OLD_WAY
-#ifndef OLD_WAY
     // Hardware flow control
 
     // EFR can only be set when Enhanced Feature Registers are only accessible when LCR = 0xBF 0b10111111
@@ -231,64 +229,51 @@ bool SC16IS7xxPort::begin(int baudRate, uint32_t options) {
     efr = 0b00010000; // Enable enhanced functions EFR[4]
     interface->writeRegister(channel, SC16IS7xxInterface::EFR_REG, efr);
 
-    // Restore default LCR to disable enhanced feature mode
-    interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, SC16IS7xxInterface::LCR_DEFAULT); // 0x1D
-
-
 
     // The boot value of MCR is 0x00
     // We always use the default divisor prescaler of 1 using MCR[7] = 0. The divide by 4 isn't necessary for 
     // the standard crystal values.
-    mcr = 0;
     if ((options & OPTIONS_FLOW_CONTROL_RTS_CTS) != 0) {
-        mcr |= 0b00000100; // TCR and TLR enable MCR[2]
-    }
-    interface->writeRegister(channel, SC16IS7xxInterface::MCR_REG, mcr);
+        mcr = 0b00000100; // TCR and TLR enable MCR[2]
+        interface->writeRegister(channel, SC16IS7xxInterface::MCR_REG, mcr);
 
-    if ((options & OPTIONS_FLOW_CONTROL_RTS_CTS) != 0) {
         // TCR must be set before flow control is enabled in the EFR
         // tcr is set from withTransmissionControlLevels. Default value is halt at 60, resume at 30.
         // TCR can only be set when MCR[2] = 1 and EFR[4] = 1, otherwise it is the MSR (modem status register)
         interface->writeRegister(channel, SC16IS7xxInterface::TCR_REG, tcr);
+        interface->writeRegister(channel, SC16IS7xxInterface::TLR_REG, 0);
     }
     else {
-        interface->writeRegister(channel, SC16IS7xxInterface::TCR_REG, 0);
+        mcr = 0;
+        interface->writeRegister(channel, SC16IS7xxInterface::MCR_REG, mcr);
     }
+    // When enabling flow control, output is setting set to 5 bits!
 
     // EFR can only be set when Enhanced Feature Registers are only accessible when LCR = 0xBF 0b10111111
+    // If that were an actual config it would be divisor latch + set parity to 0, 8 data bits, 2 stop bits
     interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, SC16IS7xxInterface::LCR_ENABLE_ENHANCED_FEATURE_REG); // 0xbf
 
     // Enable RTS or CTS
     // Clear enhanced function enable EFR[4] so TCR goes back to being MSR now that TCR is set?
-    efr = 0;
+    // efr = 0;
     if ((options & OPTIONS_FLOW_CONTROL_RTS) != 0) {
-        // RTS flow enable EFR[6] and enhanced function enable EFR[4]
+        // RTS flow enable EFR[6]
         efr |= 0b01000000;
     }  
     if ((options & OPTIONS_FLOW_CONTROL_CTS) != 0) {
-        // CTS flow enable EFR[7] and enhanced function enable EFR[4]
+        // CTS flow enable EFR[7]
         efr |= 0b10000000;            
     }
-    // I tried also leaving EFR[4] enabled, which did not help
     interface->writeRegister(channel, SC16IS7xxInterface::EFR_REG, efr);
 
     // options set break, parity, stop bits, and word length
     lcr = (uint8_t)(options & 0x3f);
 
+    // DLL_REG and DHL_REG are accessible only when LCR[7] = 1 and not 0xBF.
 	interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, SC16IS7xxInterface::LCR_SPECIAL_ENABLE_DIVISOR_LATCH); // 0x80
 	interface->writeRegister(channel, SC16IS7xxInterface::DLL_REG, div & 0xff);
 	interface->writeRegister(channel, SC16IS7xxInterface::DLH_REG, div >> 8);
 	interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, lcr); // Clears LCR_SPECIAL_ENABLE_DIVISOR_LATCH
-#else
-
-	interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, SC16IS7xxInterface::LCR_SPECIAL_ENABLE_DIVISOR_LATCH); // 0x80
-	interface->writeRegister(channel, SC16IS7xxInterface::DLL_REG, div & 0xff);
-	interface->writeRegister(channel, SC16IS7xxInterface::DLH_REG, div >> 8);
-	interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, options & 0x3f); // Clears LCR_SPECIAL_ENABLE_DIVISOR_LATCH
-
-    // options set break, parity, stop bits, and word length
-
-#endif
 
 	// Enable FIFOs
 	interface->writeRegister(channel, SC16IS7xxInterface::FCR_IIR_REG, 0x07); // Enable FIFO, Clear RX and TX FIFOs
