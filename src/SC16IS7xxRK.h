@@ -304,6 +304,8 @@ public:
 	 */
 	virtual int read(uint8_t *buffer, size_t size);
 
+    // Mask 0x3f of options (low 6 bits) are the data bits, parity, and stop bits
+    
 	static const uint32_t OPTIONS_8N1 = 0b000011; //!< 8 data bits, no parity, 1 stop bit
 	static const uint32_t OPTIONS_8E1 = 0b011011; //!< 8 data bits, even parity, 1 stop bit
 	static const uint32_t OPTIONS_8O1 = 0b001011; //!< 8 data bits, odd parity, 1 stop bit

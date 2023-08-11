@@ -10,10 +10,10 @@ SYSTEM_THREAD(ENABLED);
 
 // - Connect the SC16IS7xx by SPI
 // - Use D2 as the SPI CS
-// - Connect SC16IS7xx TX to Particle RX
-// - Connect SC16IS7xx RX to Particle TX
-// - Connect SC16IS7xx /CTS (input) to Particle D2 RTS (output)
-// - Connect SC16IS7xx /RTS (output) to Particle D3 CTS (input)
+// - Connect SC16IS7xx TX to Particle RX (Channel 0)
+// - Connect SC16IS7xx RX to Particle TX (Channel 1)
+// - Connect SC16IS7xx /CTS (input) to Particle D2 RTS (output) (channel 3)
+// - Connect SC16IS7xx /RTS (output) to Particle D3 CTS (input) (channel 2)
 SC16IS7x0 extSerial;
 
 // Uncomment this to use SPI and set to the CS pin
@@ -22,9 +22,12 @@ SC16IS7x0 extSerial;
 int baudRate = 38400;
 
 Thread *sendingThread;
-size_t writeIndex = 0;
-size_t readIndex = 0;
-bool valueWarned = false;
+size_t writeIndex1 = 0;
+size_t readIndex1 = 0;
+size_t writeIndex2 = 0;
+size_t readIndex2 = 0;
+bool valueWarned1 = false;
+bool valueWarned2 = false;
 
 void sendingThreadFunction(void *param);
 
@@ -36,10 +39,11 @@ void setup()
 {
     // If you want to see the log messages at startup, uncomment the following line
     waitFor(Serial.isConnected, 10000);
+    delay(2000);
 
     // Serial1 D3(CTS) Input. When HW flow control is enabled, must be low for this side to send data.
     // Serial1 D2(RTS) Output. LOW indicates that this side can receive data (buffer not full).
-    Serial1.begin(baudRate, SERIAL_FLOW_CONTROL_RTS_CTS);
+    Serial1.begin(baudRate, SERIAL_FLOW_CONTROL_RTS_CTS); 
 
 #ifdef USE_SPI_CS
     extSerial.withSPI(&SPI, USE_SPI_CS, 4); // SPI port, CS line, speed in MHz
@@ -60,25 +64,42 @@ void loop()
 {
     if (!sendingThread && Particle.connected()) {
         // Start sending thread
-        sendingThread = new Thread("sending", sendingThreadFunction, (void *)nullptr, OS_THREAD_PRIORITY_DEFAULT, 512);        
+        sendingThread = new Thread("sending", sendingThreadFunction, (void *)nullptr, OS_THREAD_PRIORITY_DEFAULT, 2048);        
+        Log.info("starting test!");
     }
 
     uint8_t readBuf[64];
     
     int count = extSerial.read(readBuf, sizeof(readBuf));
     if (count > 0) {
-        for(int ii = 0; ii < count; ii++, readIndex++) {
-            if (readBuf[ii] != (readIndex & 0xff)) {
-                if (!valueWarned) {
-                    valueWarned = true;
-                    Log.error("value mismatch readIndex=%u got=0x%02x expected=0x%02x count=%d ii=%d", readIndex, readBuf[ii], readIndex & 0xff, count, ii);
+        for(int ii = 0; ii < count; ii++, readIndex1++) {
+            if (readBuf[ii] != (readIndex1 & 0xff)) {
+                if (!valueWarned1) {
+                    valueWarned1 = true;
+                    Log.error("value1 mismatch readIndex=%u got=0x%02x expected=0x%02x count=%d ii=%d", readIndex1, readBuf[ii], readIndex1 & 0xff, count, ii);
                 }
             }
-            if ((readIndex % 10000) == 0) {
-                if (!valueWarned) {
-                    Log.info("readIndex=%u writeIndex=%u", readIndex, writeIndex);
+            if ((readIndex1 % 10000) == 0) {
+                if (!valueWarned1) {
+                    Log.info("readIndex1=%u writeIndex1=%u", readIndex1, writeIndex1);
                 }
             }
+        }
+    }
+
+    while(Serial1.available()) {
+        int c = Serial1.read();
+        if (c != (readIndex2 & 0xff)) {
+            if (!valueWarned2) {
+                valueWarned2 = true;
+                Log.error("value2 mismatch readIndex=%u got=0x%02x expected=0x%02x", readIndex2, c, readIndex2 & 0xff);
+            }
+            if ((readIndex2 % 10000) == 0) {
+                if (!valueWarned2) {
+                    Log.info("readIndex2=%u writeIndex2=%u", readIndex2, writeIndex2);
+                }
+            }
+            readIndex2++;
         }
     }
 }
@@ -87,7 +108,10 @@ void sendingThreadFunction(void *param)
 {
     while(true) {
         while(Serial1.availableForWrite() > 10) {
-            Serial1.write(writeIndex++ & 0xff);
+            Serial1.write(writeIndex1++ & 0xff);
+        }
+        while(extSerial.availableForWrite() > 10) {
+            extSerial.write(writeIndex2++ & 0xff);
         }
         delay(1);
     }
