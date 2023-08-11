@@ -11,7 +11,7 @@ SYSTEM_THREAD(ENABLED);
 // - Connect the SC16IS7xx by SPI
 // - Use D2 as the SPI CS
 // - Connect SC16IS7xx TX to Particle RX (Channel 0)
-// - Connect SC16IS7xx RX to Particle TX (Channel 1)
+// - Connect Particle TX to SC16IS7xx RX (Channel 1)
 // - Connect SC16IS7xx /CTS (input) to Particle D2 RTS (output) (channel 3)
 // - Connect SC16IS7xx /RTS (output) to Particle D3 CTS (input) (channel 2)
 SC16IS7x0 extSerial;
@@ -32,7 +32,7 @@ bool valueWarned2 = false;
 void sendingThreadFunction(void *param);
 
 #if !defined(HAL_PLATFORM_NRF52840)
-#error This example only runs on nRF52 devices as RTL872x devices don't support hardware flow control on Serial1
+#error "This example only runs on nRF52 devices as RTL872x devices do not support hardware flow control on Serial1"
 #endif
 
 void setup()
@@ -65,7 +65,7 @@ void loop()
     if (!sendingThread && Particle.connected()) {
         // Start sending thread
         sendingThread = new Thread("sending", sendingThreadFunction, (void *)nullptr, OS_THREAD_PRIORITY_DEFAULT, 2048);        
-        Log.info("starting test!");
+        Log.info("starting test 09-hw-flow-control!");
     }
 
     uint8_t readBuf[64];
@@ -110,9 +110,18 @@ void sendingThreadFunction(void *param)
         while(Serial1.availableForWrite() > 10) {
             Serial1.write(writeIndex1++ & 0xff);
         }
-        while(extSerial.availableForWrite() > 10) {
-            extSerial.write(writeIndex2++ & 0xff);
+
+        size_t count = extSerial.availableForWrite();
+        if (count > 20) {
+            uint8_t buf[64];
+
+            count -= 10; // Leave some extra space
+            for(size_t ii = 0; ii < count; ii++) {
+                buf[ii] = (uint8_t)(writeIndex2++ & 0xff);
+            }            
+            extSerial.write(buf, count);
         }
+
         delay(1);
     }
 }

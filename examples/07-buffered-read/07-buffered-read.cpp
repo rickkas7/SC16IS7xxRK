@@ -59,7 +59,7 @@ void loop()
     if (!sendingThread && Particle.connected()) {
         // Start sending thread
         sendingThread = new Thread("sending", sendingThreadFunction, (void *)nullptr, OS_THREAD_PRIORITY_DEFAULT, 512);
-        Log.info("starting test!");
+        Log.info("starting test 07-buffered read!");
     }
 
     uint8_t readBuf[64];

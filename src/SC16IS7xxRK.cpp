@@ -219,6 +219,8 @@ bool SC16IS7xxPort::begin(int baudRate, uint32_t options) {
 
     _uartLogger.trace("baudRate=%d div=%d options=0x%08lx", baudRate, div, options);
 
+//#define OLD_WAY
+#ifndef OLD_WAY
     // Hardware flow control
 
     // EFR can only be set when Enhanced Feature Registers are only accessible when LCR = 0xBF 0b10111111
@@ -229,8 +231,13 @@ bool SC16IS7xxPort::begin(int baudRate, uint32_t options) {
     efr = 0b00010000; // Enable enhanced functions EFR[4]
     interface->writeRegister(channel, SC16IS7xxInterface::EFR_REG, efr);
 
+    // Restore default LCR to disable enhanced feature mode
+    interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, SC16IS7xxInterface::LCR_DEFAULT); // 0x1D
+
+
+
     // The boot value of MCR is 0x00
-    // We always use the default divisor prescaler of 1 in MCR[7]. The divide by 4 isn't necessary for 
+    // We always use the default divisor prescaler of 1 using MCR[7] = 0. The divide by 4 isn't necessary for 
     // the standard crystal values.
     mcr = 0;
     if ((options & OPTIONS_FLOW_CONTROL_RTS_CTS) != 0) {
@@ -247,6 +254,9 @@ bool SC16IS7xxPort::begin(int baudRate, uint32_t options) {
     else {
         interface->writeRegister(channel, SC16IS7xxInterface::TCR_REG, 0);
     }
+
+    // EFR can only be set when Enhanced Feature Registers are only accessible when LCR = 0xBF 0b10111111
+    interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, SC16IS7xxInterface::LCR_ENABLE_ENHANCED_FEATURE_REG); // 0xbf
 
     // Enable RTS or CTS
     // Clear enhanced function enable EFR[4] so TCR goes back to being MSR now that TCR is set?
@@ -269,7 +279,16 @@ bool SC16IS7xxPort::begin(int baudRate, uint32_t options) {
 	interface->writeRegister(channel, SC16IS7xxInterface::DLL_REG, div & 0xff);
 	interface->writeRegister(channel, SC16IS7xxInterface::DLH_REG, div >> 8);
 	interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, lcr); // Clears LCR_SPECIAL_ENABLE_DIVISOR_LATCH
+#else
 
+	interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, SC16IS7xxInterface::LCR_SPECIAL_ENABLE_DIVISOR_LATCH); // 0x80
+	interface->writeRegister(channel, SC16IS7xxInterface::DLL_REG, div & 0xff);
+	interface->writeRegister(channel, SC16IS7xxInterface::DLH_REG, div >> 8);
+	interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, options & 0x3f); // Clears LCR_SPECIAL_ENABLE_DIVISOR_LATCH
+
+    // options set break, parity, stop bits, and word length
+
+#endif
 
 	// Enable FIFOs
 	interface->writeRegister(channel, SC16IS7xxInterface::FCR_IIR_REG, 0x07); // Enable FIFO, Clear RX and TX FIFOs
@@ -324,7 +343,7 @@ size_t SC16IS7xxPort::write(uint8_t c) {
 
 	if (writeBlocksWhenFull) {
 		// Block until there is room in the buffer
-		while(!availableForWrite()) {
+		while(availableForWrite() == 0) {
 			delay(1);
 		}
 	}

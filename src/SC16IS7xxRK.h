@@ -305,7 +305,7 @@ public:
 	virtual int read(uint8_t *buffer, size_t size);
 
     // Mask 0x3f of options (low 6 bits) are the data bits, parity, and stop bits
-    
+
 	static const uint32_t OPTIONS_8N1 = 0b000011; //!< 8 data bits, no parity, 1 stop bit
 	static const uint32_t OPTIONS_8E1 = 0b011011; //!< 8 data bits, even parity, 1 stop bit
 	static const uint32_t OPTIONS_8O1 = 0b001011; //!< 8 data bits, odd parity, 1 stop bit
@@ -475,6 +475,7 @@ public:
 	static const uint8_t EFCR_REG = 0x0f; //!< Extra Features Control Register
 
 	// Special register block
+    static const uint8_t LCR_DEFAULT = 0x1D; //!< Power-on default value of LCR
 	static const uint8_t LCR_SPECIAL_ENABLE_DIVISOR_LATCH = 0x80; //!< 
 	static const uint8_t LCR_ENABLE_ENHANCED_FEATURE_REG = 0xbf; //!< 
 	static const uint8_t DLL_REG = 0x00; //!< Divisor Latch LSB (DLL)
