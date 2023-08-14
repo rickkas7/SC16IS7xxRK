@@ -147,27 +147,15 @@ void SC16IS7xxBuffer::writeCallback(std::function<void(uint8_t *buffer, size_t &
 }
 
 
-SC16IS7xxPort &SC16IS7xxPort::withBufferedRead(size_t bufferSize, pin_t intPin) {
+SC16IS7xxPort &SC16IS7xxPort::withBufferedRead(size_t bufferSize) {
     
     if (!readBuffer) {
         readBuffer = new SC16IS7xxBuffer();
         if (readBuffer) {
             readBuffer->init(bufferSize);
 
-            interface->registerThreadFunction([intPin, this]() {
+            interface->registerThreadFunction([this]() {
                 // This code is called from the worker thread
-
-
-                if (intPin != PIN_INVALID) {
-                    // Check interrupt
-                    if (pinReadFast(intPin)) {
-                        // Interrupt is not set
-                        return;
-                    }
-
-                    // Clear interrupt
-
-                }
 
                 size_t rxAvailable = available();
                 if (rxAvailable) {                    
@@ -186,8 +174,6 @@ SC16IS7xxPort &SC16IS7xxPort::withBufferedRead(size_t bufferSize, pin_t intPin) 
                 }
 
             });
-
-            // Enable interrupts
         }
     }
     
@@ -418,6 +404,61 @@ int SC16IS7xxPort::read(uint8_t *buffer, size_t size) {
 }
 
 
+void SC16IS7xxPort::handleIIR() {
+    uint8_t iir = interface->readRegister(channel, SC16IS7xxInterface::IER_REG) & 0x3f;
+
+    switch(iir) {
+        case 0b000110:
+            if (interruptLineStatus) {
+                interruptLineStatus();
+            }
+            break;
+
+        case 0b001100:
+            if (interruptRxTimeout) {
+                interruptRxTimeout();
+            }
+            break;
+
+        case 0b000100:
+            if (interruptRHR) {
+                interruptRHR();
+            }
+            break;
+
+        case 0b000010:
+            if (interruptTHR) {
+                interruptTHR();
+            }
+            break;
+
+        case 0b000000:
+            if (interruptModemStatus) {
+                interruptModemStatus();
+            }
+            break;
+
+        case 0b110000:
+            if (interruptIO) {
+                interruptIO();
+            }
+            break;
+
+        case 0b010000:
+            if (interruptXoff) {
+                interruptXoff();
+            }
+            break;
+
+        case 0b100000:
+            if (interruptCTS_RTS) {
+                interruptCTS_RTS();
+            }
+            break;
+
+    }
+}
+
 
 SC16IS7xxInterface &SC16IS7xxInterface::withI2C(TwoWire *wire, uint8_t addr) {
     this->wire = wire;
@@ -445,6 +486,28 @@ SC16IS7xxInterface &SC16IS7xxInterface::withSPI(SPIClass *spi, pin_t csPin, size
     digitalWrite(this->csPin, HIGH);
 
     return *this;
+}
+
+
+SC16IS7xxInterface &SC16IS7xxInterface::withIRQ(pin_t _irqPin, PinMode mode) { 
+    irqPin = _irqPin;
+
+    // mode defaults to INPUT_PULLUP but you could set it to INPUT instead.
+    pinMode(irqPin, mode);
+
+    registerThreadFunction([this]() {
+        // This is called 1000 times per second from the worker thread
+        if (pinReadFast(irqPin) == LOW) {
+            // Interrupt triggered
+
+            // TODO: Make this work properly for channels
+
+
+        }
+    });
+
+
+    return *this; 
 }
 
 
@@ -733,5 +796,11 @@ SC16IS7x2::SC16IS7x2() {
     for(size_t ii = 0; ii < (sizeof(ports) / sizeof(ports[0])); ii++) {
         ports[ii].channel = ii;
         ports[ii].interface = this;
+    }
+}
+
+void SC16IS7x2::forEachPort(std::function<void(SC16IS7xxPort *port)> callback) {
+    for(size_t ii = 0; ii < (sizeof(ports) / sizeof(ports[0])); ii++) {
+        callback(&ports[ii]);
     }
 }

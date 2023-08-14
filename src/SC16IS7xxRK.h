@@ -177,10 +177,8 @@ public:
      * @brief Enable buffered read mode
      * 
      * @param bufferSize Buffer size in bytes. The buffer is allocated on the heap.
-     * 
-     * @param intPin GPIO connected to the SC16IS7xx IRQ pin. This is recommended for best performance. If not using interrupts, set to PIN_INVALID.
      */
-    SC16IS7xxPort &withBufferedRead(size_t bufferSize, pin_t intPin = PIN_INVALID);
+    SC16IS7xxPort &withBufferedRead(size_t bufferSize);
 
     /**
      * @brief Sets the auto RTS hardware flow control levels. Call before begin() to change levels
@@ -354,6 +352,14 @@ protected:
      */
     SC16IS7xxPort& operator=(const SC16IS7xxPort&) = delete;
 
+    /**
+     * @brief Handle reading the IIR register and dispatching to the interrupt handler
+     * 
+     * This is used interally and you cannot call it.
+     */
+    void handleIIR();
+
+
 	bool hasPeek = false; //!< There is a byte from the last peek() available
 	uint8_t peekByte = 0; //!< The byte that was read if hasPeek == true
 	bool writeBlocksWhenFull = true;
@@ -366,7 +372,17 @@ protected:
 
     SC16IS7xxBuffer *readBuffer = nullptr; //!< Buffer object when using withReadBuffer
 
+    std::function<void()> interruptLineStatus = nullptr; //!< Function to call for a line status interrupt
+    std::function<void()> interruptRxTimeout = nullptr; //!< Function to call for stale data in RX FIFO
+    std::function<void()> interruptRHR = nullptr; //!< Function to call for RHR FIFO above level
+    std::function<void()> interruptTHR = nullptr; //!< Function to call for THR FIFO below level
+    std::function<void()> interruptModemStatus = nullptr; //!< Function to call for change in modem input status
+    std::function<void()> interruptIO = nullptr; //!< Function to call for GPIO interrupt
+    std::function<void()> interruptXoff = nullptr; //!< Function to call for a received Xoff with software flow control, or special bytes
+    std::function<void()> interruptCTS_RTS = nullptr; //!< Function to call for CTS or RTS transition low to high
+
     friend class SC16IS7x2; //!< The SC16IS7x0 derives from this, but the SC16IS7x2 has this ports as member variables
+    friend class SC16IS7xxInterface; //!< Allows the interface to call private members of this class, used to call handleIIR()
 };
 
 /**
@@ -434,6 +450,16 @@ public:
      */
     SC16IS7xxInterface &withOscillatorFrequency(int freqHz) { this->oscillatorFreqHz = freqHz; return *this; };
 
+
+    /**
+     * @brief Sets the pin used for IRQ (hardware interrupts). This is optional.
+     * 
+     * @param irqPin Pin to use (D3, D4, ...)
+     * @param mode The pin mode. Default is INPUT_PULLUP. Could be INPUT instead.
+     * @return SC16IS7xxInterface& 
+     */
+    SC16IS7xxInterface &withIRQ(pin_t irqPin, PinMode mode = INPUT_PULLUP);
+
     /**
      * @brief Do a software reset of the device
      */
@@ -462,6 +488,14 @@ public:
 	bool writeRegister(uint8_t channel, uint8_t reg, uint8_t value);
 
 
+    /**
+     * @brief Calls a callback for each port on this chip
+     * 
+     * @param callback 
+     */
+    virtual void forEachPort(std::function<void(SC16IS7xxPort *port)> callback) = 0;
+
+
 	static const uint8_t RHR_THR_REG = 0x00; //!< Receive Holding Register (RHR) and Transmit Holding Register (THR)
 	static const uint8_t IER_REG = 0x01;  //!< Interrupt Enable Register (IER)
 	static const uint8_t FCR_IIR_REG = 0x02; //!< Interrupt Identification Register (IIR) and FIFO Control Register (FCR)
@@ -479,6 +513,8 @@ public:
 	static const uint8_t IOINTENA_REG = 0x0c; //!< I/O Interrupt Enable register
 	static const uint8_t IOCONTROL_REG = 0x0e; //!< I/O pins Control register
 	static const uint8_t EFCR_REG = 0x0f; //!< Extra Features Control Register
+
+    // IIR
 
 	// Special register block
     static const uint8_t LCR_DEFAULT = 0x1D; //!< Power-on default value of LCR
@@ -572,10 +608,13 @@ protected:
     uint8_t i2cAddr = 0; //!< When using I2C, the I2C address of the SC16IS7xx chip.
     SPIClass *spi = nullptr; //!< When using SPI, the SPI object (typically SPI or SPI1).
     pin_t csPin = PIN_INVALID; //!< When using SPI, the CS pin (required for SPI)
+    pin_t irqPin = PIN_INVALID; //!< Hardware IRQ from SC16IS7xx, optional.
+    size_t irqFifoLevel = 30; //!< Number of bytes to trigger IRQ
     SPISettings spiSettings; //!< When using SPI, the SPISettings (bit rate, bit order, mode).
     int oscillatorFreqHz = 1843200; //!< Oscillator frequency. Default is 1.8432 MHz, can also be 3072000 (3.072 MHz).
     Thread *workerThread = nullptr; //!< Worker thread, created if registerThreadFunction() is called.
     std::vector<std::function<void()>> threadFunctions; //!< Functions to call from the worker thread, added using registerThreadFunction()
+
 
     friend class SC16IS7xxPort; //!< The port object calls the interface object and uses the register contents
 };
@@ -672,6 +711,13 @@ public:
      * you want to work with.
      */
     inline SC16IS7xxPort& operator[](size_t index) { return *this; };
+
+    /**
+     * @brief Call callback for each port
+     * 
+     * For the SC16IS7x0 there is only one port, but this makes operation consistent across chips.
+     */
+    void forEachPort(std::function<void(SC16IS7xxPort *port)> callback) { callback(this); };
 
 protected:
     /**
@@ -775,6 +821,13 @@ public:
      * @return SC16IS7xxPort& 
      */
     inline SC16IS7xxPort& operator[](size_t index) { return ports[index]; };
+
+    /**
+     * @brief Call callback for each port
+     * 
+     * For the SC16IS7x2 there are two ports
+     */
+    void forEachPort(std::function<void(SC16IS7xxPort *port)> callback);
 
 protected:
     /**

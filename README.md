@@ -58,3 +58,18 @@ Note that the serial outputs are 3.3V and the inputs must be 3.3V or 5V. If you 
 
 Automatic hardware flow control (CTS/RTS) can
 
+## Interrupts
+
+This library does not take advantage of the interrupt (IRQ) hardware feature of the SC16IS7xx. There are a number of reasons for this:
+
+- It is not possible to start an I2C or SPI transaction from an ISR. This is necessary in order to determine which interrupt triggered.
+
+- Since you can only start transactions from a thread, interrupts don't reduce the latency any more than polling.
+
+- Interrupts would have a small benefit in that the thread would not have to query the chip on every loop, 1000 times per second. However this benefit is further reduced for other reasons:
+
+- If interrupts were enabled, it would add an additional transaction to see which interrupt triggered, and clear it.
+
+- When using buffered read mode, there is no facility to interrupt on 1 to 3 bytes in the FIFO, which means buffered read would still need to poll on every loop, otherwise receiving less than 4 bytes would never trigger an interrupt and the data would sit in the FIFO forever.
+
+Because of the added complexity, the need for an additional GPIO, and very little benefit, SC16IS7xx interrupts are not used by this library.
