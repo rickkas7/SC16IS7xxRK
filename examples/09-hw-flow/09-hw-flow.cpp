@@ -19,7 +19,7 @@ SC16IS7x0 extSerial;
 // Uncomment this to use SPI and set to the CS pin
 #define USE_SPI_CS D4
 
-int baudRate = 38400;
+int baudRate = 115200;
 
 Thread *sendingThread;
 size_t writeIndex1 = 0;
@@ -59,8 +59,7 @@ void setup()
     // Unlike the Device OS options, the SC16IS7xx OPTIONS_8N1 value is not 0! If you omit it,
     // the output will be 5N1, not 8N1!
     extSerial.begin(baudRate, SC16IS7xxPort::OPTIONS_8N1 | SC16IS7xxPort::OPTIONS_FLOW_CONTROL_RTS_CTS);
-
-
+    
 }
 
 void loop()
@@ -86,6 +85,8 @@ void loop()
                 if (!valueWarned1) {
                     Log.info("readIndex1=%u writeIndex1=%u", readIndex1, writeIndex1);
                 }
+                // This delay is to force flow control to do something. Data will be lost without flow control.
+                delay(500);
             }
         }
     }
@@ -101,6 +102,8 @@ void loop()
                 if (!valueWarned2) {
                     Log.info("readIndex2=%u writeIndex2=%u", readIndex2, writeIndex2);
                 }
+                // This delay is to force flow control to do something. Data will be lost without flow control.
+                delay(500);
             }
             readIndex2++;
         }

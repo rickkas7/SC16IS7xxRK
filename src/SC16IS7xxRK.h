@@ -208,6 +208,11 @@ public:
 	 * OPTIONS_7N1, OPTIONS_7E1, OPTIONS_7O1
 	 * OPTIONS_7N2, OPTIONS_7E2, OPTIONS_7O2
      * 
+     * It also supports all of the unusual settings supported by the SC16IS7xx. This includes all combinations of 
+     * 5, 6, 7, and 8 data bits, 1 or 2 stop bits (1.5 stop bits for 5-bit), and none, even, odd, force 0, or force 1 
+     * parity. Use the other OPTIONS_ constants for the unusual combinations, which are the same as the data sheet
+     * values.
+     * 
      * Unlike the Device OS options, the SC16IS7xx OPTIONS_8N1 value is not 0! If you omit are enabling
      * hardware flow control be sure to set it like 
      * SC16IS7xxPort::OPTIONS_8N1 | SC16IS7xxPort::OPTIONS_FLOW_CONTROL_RTS_CTS
@@ -309,6 +314,19 @@ public:
 
 
     // Mask 0x3f of options (low 6 bits) are the data bits, parity, and stop bits
+    static const uint32_t OPTIONS_BITS_5 = 0x0b00; //!< 5 data bits
+    static const uint32_t OPTIONS_BITS_6 = 0x0b01; //!< 6 data bits
+    static const uint32_t OPTIONS_BITS_7 = 0x0b10; //!< 7 data bits
+    static const uint32_t OPTIONS_BITS_8 = 0x0b11; //!< 8 data bits
+
+    static const uint32_t OPTIONS_STOP_1 = 0b000; //!< 1 stop bit 
+    static const uint32_t OPTIONS_STOP_2 = 0b100; //!< 2 stop bits (6, 7, 8 data bits), 1 1/2 stop bits (5 data bits)
+
+    static const uint32_t OPTIONS_PARITY_NONE    = 0b000000; //!< No parity
+    static const uint32_t OPTIONS_PARITY_ODD     = 0b001000; //!< Odd parity
+    static const uint32_t OPTIONS_PARITY_EVEN    = 0b011000; //!< Even parity
+    static const uint32_t OPTIONS_PARITY_FORCE_1 = 0b101000; //!< Force parity 1
+    static const uint32_t OPTIONS_PARITY_FORCE_0 = 0b111000; //!< Force parity 0
 
 	static const uint32_t OPTIONS_8N1 = 0b000011; //!< 8 data bits, no parity, 1 stop bit
 	static const uint32_t OPTIONS_8E1 = 0b011011; //!< 8 data bits, even parity, 1 stop bit
@@ -389,6 +407,362 @@ protected:
 
     friend class SC16IS7x2; //!< The SC16IS7x0 derives from this, but the SC16IS7x2 has this ports as member variables
     friend class SC16IS7xxInterface; //!< Allows the interface to call private members of this class, used to call handleIIR()
+};
+
+/**
+ * @brief Class for managing GPIO attached to the SC16IS7xx.
+ * 
+ * The GPIO features available depend on the chip.
+ * 
+ * - SC16IS740 does not support GPIO (does not have the pins)
+ * - SC16IS750 and SC16IS760 can support 8 GPIO, or 4 GPIO plus extended flow control (DSR, DTR, CD, RI).
+ * - SC16IS752 and SC16IS762 can support 8 GPIO, or extended flow control (DSR, DTR, CD, RI) with no additional GPIO.
+ * 
+ * In other words, since extended flow control (DSR, DTR, CD, RI) uses 4 GPIO, on dual-port devices, extended flow
+ * control will use all available GPIO.
+ * 
+ * Note that "interrupt mode" is not a true ISR. Since the status of the chip must be checked from SPI or I2C, which
+ * cannot be locked from an ISR, these are all handled from the worker thread, not a true ISR. Because the worker thread
+ * is shared with buffered reading mode and has a small stack, you still should not do lengthy operations from an
+ * interrupt handler. 
+ */
+class SC16IS7xxGPIO {
+public:
+    SC16IS7xxGPIO(SC16IS7xxInterface *interface);
+
+    virtual ~SC16IS7xxGPIO();
+
+	/**
+	 * @brief Sets the SC16IS7xxGPIO GPIO pin mode
+	 * 
+	 * @param pin The GPIO pin 0 - 7.
+	 * 
+	 * @param mode The mode, one of the following:
+	 * 
+	 * - `INPUT` 
+	 * - `INPUT_PULLUP`
+	 * - `OUTPUT`
+	 * 
+	 * Note that the SC16IS7xxGPIO does not support input with pull-down or open-drain outputs
+	 * for its GPIO.
+	 */
+	void pinMode(uint16_t pin, PinMode mode);
+
+	/**
+	 * @brief Gets the currently set pin mode
+	 * 
+	 * @param pin The GPIO pin 0 - 7.
+	 * 
+	 * @return One of these constants:
+	 * 
+	 * - `INPUT` 
+	 * - `OUTPUT`
+     * - 
+	 * 
+     * Note: The SC16IS7xx does not support pull-up or pull-down modes (internal pull).
+	 */
+	PinMode getPinMode(uint16_t pin);
+
+	/**
+	 * @brief Returns true if the pin exists on the device
+	 * 
+	 * @param pin The GPIO pin 0 - 7.
+	 * 
+	 * @return true if pin is 0 <= pin < 8, otherwise false
+	 */
+	bool pinAvailable(uint16_t pin) const;
+
+	/**
+	 * @brief Sets the output value of the pin
+	 * 
+	 * @param pin The GPIO pin 0 - 7.
+	 * 
+	 * @param value The value to set the pin to. Typically you use one of:
+	 * 
+	 * - 0, false, or LOW
+	 * - 1, true, or HIGH
+	 * 
+	 * You must have previously set the pin to OUTPUT mode before using this method.
+	 * 
+	 * This performs and I2C transaction, so it will be slower that MCU native digitalWrite.
+	 */
+	void digitalWrite(uint16_t pin, uint8_t value);
+
+	/**
+	 * @brief Reads the input value of a pin
+	 * 
+	 * @return The value, 0 or 1:
+	 * 
+	 * - 0, false, or LOW
+	 * - 1, true, or HIGH
+	 * 
+	 * This performs and I2C transaction, so it will be slower that MCU native digitalRead.
+	 */
+	int32_t digitalRead(uint16_t pin);
+
+	/**
+	 * @brief Reads all of the pins at once
+	 * 
+	 * @return A bit mask of the pin values
+	 * 
+	 * The bit mask is as follows:
+	 * 
+	 * | Pin   | Mask              |
+	 * | :---: | :---------------- |
+	 * | 0     | 0b00000001 = 0x01 |
+	 * | 1     | 0b00000010 = 0x02 |
+	 * | 2     | 0b00000100 = 0x04 |
+	 * | 3     | 0b00001000 = 0x08 |
+	 * | 4     | 0b00010000 = 0x10 |
+	 * | 5     | 0b00100000 = 0x20 |
+	 * | 6     | 0b01000000 = 0x40 |
+	 * | 7     | 0b10000000 = 0x80 |
+	 * 
+	 * In other words: `bitMask = (1 << pin)`.
+	 * 
+	 * This performs and I2C transaction, but all pins are read with a single I2C transaction
+	 * so it is faster than calling digitalRead() multiple times. 
+	 */
+	uint8_t readAllPins();
+
+	/**
+	 * @brief Enables SC16IS7xxGPIO interrupt mode
+	 * 
+	 * @param mcuInterruptPin The MCU pin (D2, A2, etc.) the SC16IS7xxGPIO INT pin is connected
+	 * to. This can also be `PIN_INVALID` if you want to use the latching change mode
+	 * but do not have the INT pin connected or do not have a spare MCU GPIO.
+	 * 
+	 * @param outputType The way the INT pin is connected. See MCP23008InterruptOutputType. 
+	 * 
+	 * Interrupt mode uses the INT output of the SC16IS7xxGPIO to connect to a MCU GPIO pin.
+	 * This allows a change (RISING, FALLING, or CHANGE) on one or more GPIO connected
+	 * to the expander to trigger the INT line. This is advantageous because the MCU
+	 * can poll the INT line much more efficiently than making an I2C transaction to
+	 * poll the interrupt register on the SC16IS7xxGPIO.
+	 * 
+	 * Note that this is done from a thread, not using an MCU hardware interrupt. This
+	 * is because the I2C transaction requires getting a lock on the Wire object, which
+	 * cannot be done from an ISR. Also, because the SC16IS7xxGPIO INT output is latching,
+	 * there is no danger of missing it when polling.
+	 * 
+	 * It's possible for multiple SC16IS7xxGPIO to share a single MCU interrupt line by
+	 * using open-drain mode to logically OR them together with no external gate required.
+	 * You can also use separate MCU interrupt lines, if you prefer.
+	 * 
+	 * If you pass `PIN_INVALID` for mcuInterruptPin, outputType is ignored. This mode is
+	 * used when you still want to be able to handle latching RISING, FALLING, or CHANGE
+	 * handlers but do not have the INT pin connected or do not have spare MCU GPIOs.
+	 * This requires an I2C transaction on every thread timeslice (once per millisecond)
+	 * so it's not as efficient as using a MCU interrupt pin, but this mode is supported.
+	 */
+	void enableInterrupts(pin_t mcuInterruptPin, MCP23008InterruptOutputType outputType);
+
+	/**
+	 * @brief Attaches an interrupt handler for a pin
+	 * 
+	 * @param pin The GPIO pin 0 - 7.
+	 * 
+	 * @param mode The interrupt handler mode, one of: `RISING`, `FALLING`, or `CHANGE`.
+	 * 
+	 * @param handler A function or C++11 lambda with the following prototype:
+	 * 
+	 * ```
+	 * void handlerFunction(bool newState);
+	 * ```
+	 * 
+	 * You must call enableInterrupts() before making this call! 
+	 * 
+	 * Note that the handler will be called from a thread, not an ISR, so it's not a true
+	 * interrupt handler. The reason is that in order to handle the SC16IS7xxGPIO interrupt, more
+	 * than one I2C transaction is required. This cannot be easily done at ISR time because
+	 * an I2C lock needs to be acquired. It can, however, be easily done from a thread, which
+	 * is what is done here. enableInterrupts() starts this thread.
+	 * 
+	 * Even though handler is called from a thread and not an ISR you should still avoid any
+	 * lengthy operations during it, as the thread handles all interrupts on all SC16IS7xxGPIO
+	 * and blocking it will prevent all other interrupts from being handled.
+	 * 
+	 * There is also a version of this method that takes a class member function below.
+	 * 
+	 * If you need to pass additional data ("context") you should instead use a C++11 lambda.
+	 * 
+	 * You must not call attachInterrupt() from an interrupt handler! If you do so, this function
+	 * will deadlock the thread and all interrupt-related functions will stop working.
+	 */
+	void attachInterrupt(uint16_t pin, InterruptMode mode, std::function<void(bool)> handler);
+
+	/**
+	 * @brief Attaches an interupt handler in a class member function to a pin
+	 * 
+	 * @param pin The GPIO pin 0 - 7.
+	 * 
+	 * @param mode The interrupt handler mode, one of: `RISING`, `FALLING`, or `CHANGE`.
+	 * 
+	 * @param callback A C++ class member function with following prototype:
+	 * 
+	 * ```
+	 * void MyClass::handler(bool newState);
+	 * ```
+	 * 
+	 * @param instance The C++ object instance ("this") pointer.
+	 * 
+	 * You typically use it like this:
+	 * 
+	 * ```
+	 * attachInterrupt(2, FALLING, &MyClass::handler, this);
+	 * ```
+	 * 
+	 * You must call enableInterrupts() before making this call! 
+	 * 
+	 * Note that the handler will be called from a thread, not an ISR, so it's not a true
+	 * interrupt handler. The reason is that in order to handle the SC16IS7xxGPIO interrupt, more
+	 * than one I2C transaction is required. This cannot be easily done at ISR time because
+	 * an I2C lock needs to be acquired. It can, however, be easily done from a thread, which
+	 * is what is done here. enableInterrupts() starts this thread.
+	 * 
+	 * Even though handler is called from a thread and not an ISR you should still avoid any
+	 * lengthy operations during it, as the thread handles all interrupts on all SC16IS7xxGPIO
+	 * and blocking it will prevent all other interrupts from being handled.
+	 * 
+	 * There is also a version of this method that takes a class member function below.
+	 * 
+	 * If you need to pass additional data ("context") you should instead use a C++11 lambda.
+	 * 
+	 * You must not call attachInterrupt() from an interrupt handler! If you do so, this function
+	 * will deadlock the thread and all interrupt-related functions will stop working.	 
+	 */
+	template <typename T>
+    void attachInterrupt(uint16_t pin, InterruptMode mode, void (T::*callback)(bool), T *instance) {
+        return attachInterrupt(pin, mode, std::bind(callback, instance, std::placeholders::_1));
+    };
+
+	/**
+	 * @brief Detaches an interrupt handler for a pin
+	 * 
+	 * @param pin The GPIO pin 0 - 7.
+	 * 
+	 * You must not call detachInterrupt() from your interrupt handler! If you do so, this function
+	 * will deadlock the thread and all interrupt-related functions will stop working.
+	 * 
+	 * You should avoid attaching and detaching an interrupt excessively as it's a relatively expensive 
+	 * operation. You should only attach and detach from loop().
+	 */
+	void detachInterrupt(uint16_t pin);
+
+
+private:
+
+    /**
+     * @brief This class is not copyable
+     */
+    SC16IS7xxGPIO(const SC16IS7xxGPIO&) = delete;
+
+    /**
+     * @brief This class is not copyable
+     */
+    SC16IS7xxGPIO& operator=(const SC16IS7xxGPIO&) = delete;
+
+	/**
+	 * @brief Reads an MCP23008 register and masks off a specific bit
+	 * 
+	 * @param reg The register number, typically one of the constants like `REG_GPIO` (9).
+	 * 
+	 * @param pin The pin 0 - 7
+	 * 
+	 * @return the value boolean value
+	 * 
+	 * For registers that contain a bitmask of all 8 values (like REG_GPIO), reads all
+	 * registers and then performs the necessary bit manipulation.
+	 * 
+	 * There is no way to know if this actually succeeded.
+	 */
+	bool readRegisterPin(uint8_t reg, uint16_t pin);
+
+	/**
+	 * @brief Reads an MCP23008 register, masks off a specific bit, and writes the register back
+	 * 
+	 * @param reg The register number, typically one of the constants like `REG_GPIO` (9).
+	 * 
+	 * @param pin The pin 0 - 7
+	 * 
+	 * @param value The bit value to set (true or false)
+	 * 
+	 * @return true if the I2C operation completed successfully or false if not.
+	 * 
+	 * For registers that contain a bitmask of all 8 values (like REG_GPIO), reads all
+	 * registers, performs the necessary bit manipulation, and writes the register back.
+	 * 
+	 * The read/modify/write cycle is done within a single I2C lock()/unlock() pair to
+	 * minimize the chance of simultaneous modification.
+	 */
+	bool writeRegisterPin(uint8_t reg, uint16_t pin, bool value);
+
+
+    /**
+     * @brief Lock the buffer mutex
+     * 
+     * A recursive mutex is used to protect access to buf, readOffset, and writeOffset
+     * since they can be accessed from two different threads. The buffer is written from
+     * the worker thread and read from whatever thread the user is reading from, typically
+     * the application loop thread.
+     */
+    void lock() const { mutex.lock(); }
+
+    /**
+     * @brief Attempt to lock the mutex. If already locked from another thread, returns false.
+     * 
+     * @return true 
+     * @return false 
+     */
+    bool trylock() const { return mutex.trylock(); }
+
+    /**
+     * @brief Attempt to lock the mutex. If already locked from another thread, returns false.
+     * 
+     * @return true 
+     * @return false 
+     */
+    bool try_lock() const { return mutex.trylock(); }
+    
+    /**
+     * @brief Unlock the buffer mutex
+     */
+    void unlock() const { mutex.unlock(); }
+
+	// These are just for reference so you can see which way the pin numbers are laid out
+	// (1 << pin) is also a good way to map pin numbers to their bit
+	// Do not use these constants for any uint16_t pin variable, those functions require 0 - 7
+	// not a bitmask!
+	static const uint8_t PIN_0 = 0b00000001; 	//!< bit mask for GP0
+	static const uint8_t PIN_1 = 0b00000010; 	//!< bit mask for GP1
+	static const uint8_t PIN_2 = 0b00000100; 	//!< bit mask for GP2
+	static const uint8_t PIN_3 = 0b00001000; 	//!< bit mask for GP3
+	static const uint8_t PIN_4 = 0b00010000; 	//!< bit mask for GP4
+	static const uint8_t PIN_5 = 0b00100000; 	//!< bit mask for GP5
+	static const uint8_t PIN_6 = 0b01000000; 	//!< bit mask for GP6
+	static const uint8_t PIN_7 = 0b10000000; 	//!< bit mask for GP7
+
+	static const uint16_t NUM_PINS = 8; 		//!< Number of GPIO pins
+
+    /**
+     * @brief Thread function called from FreeRTOS. Never returns!
+     */
+    void threadFunction();
+
+    /**
+     * @brief Static thread function, called from FreeRTOS
+     *
+     * Note: param must be a pointer to this. threadFunction is called from this function.
+     * Never returns!
+     */
+    static void threadFunctionStatic(void *param);
+
+    Thread *workerThread = nullptr; //!< Worker thread, created if interrupts are used
+
+    mutable RecursiveMutex mutex; //!< Mutex to use to access handlers
+
+    SC16IS7xxInterface *interface;
+
 };
 
 /**

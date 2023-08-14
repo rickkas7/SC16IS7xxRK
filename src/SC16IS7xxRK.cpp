@@ -242,7 +242,6 @@ bool SC16IS7xxPort::begin(int baudRate, uint32_t options) {
         mcr = 0;
         interface->writeRegister(channel, SC16IS7xxInterface::MCR_REG, mcr);
     }
-    // When enabling flow control, output is setting set to 5 bits!
 
     // EFR can only be set when Enhanced Feature Registers are only accessible when LCR = 0xBF 0b10111111
     // If that were an actual config it would be divisor latch + set parity to 0, 8 data bits, 2 stop bits
@@ -452,6 +451,15 @@ int SC16IS7xxPort::read(uint8_t *buffer, size_t size) {
     }
 }
 
+//
+// SC16IS7xxGPIO
+//
+SC16IS7xxGPIO::SC16IS7xxGPIO(SC16IS7xxInterface *interface) : interface(interface) {
+}
+
+SC16IS7xxGPIO::~SC16IS7xxGPIO() {
+
+}
 
 void SC16IS7xxPort::handleIIR() {
     uint8_t iir = interface->readRegister(channel, SC16IS7xxInterface::FCR_IIR_REG) & 0x3f;
@@ -525,6 +533,254 @@ void SC16IS7xxPort::handleIIR() {
 }
 
 
+
+void SC16IS7xxGPIO::pinMode(uint16_t pin, PinMode mode) {
+	if (!pinAvailable(pin)) {
+		return;
+	}
+
+	// Set mode input (0) or output (1)
+	writeRegisterPin(SC16IS7xxInterface::IODIR_REG, pin, (mode == OUTPUT));
+}
+
+PinMode SC16IS7xxGPIO::getPinMode(uint16_t pin) {
+	if (!pinAvailable(pin)) {
+		return INPUT;
+	}
+
+	bool ioDir = readRegisterPin(SC16IS7xxInterface::IODIR_REG, pin);
+
+	if (ioDir) {
+		// bit is 1 (INPUT)
+		return INPUT;
+	}
+	else {
+		// bit is 0
+		return OUTPUT;
+	}	
+}
+
+bool SC16IS7xxGPIO::pinAvailable(uint16_t pin) const {
+	return pin < NUM_PINS;
+}
+
+void SC16IS7xxGPIO::digitalWrite(uint16_t pin, uint8_t value) {
+	if (!pinAvailable(pin)) {
+		return;
+	}
+	writeRegisterPin(SC16IS7xxInterface::IOSTATE_REG, pin, (bool)value);
+}
+
+int32_t SC16IS7xxGPIO::digitalRead(uint16_t pin) {
+	if (!pinAvailable(pin)) {
+		return HIGH;
+	}
+
+	bool value = readRegisterPin(SC16IS7xxInterface::IOSTATE_REG, pin);
+
+	if (value) {
+		return HIGH;
+	}
+	else {
+		return LOW;
+	}
+}
+
+uint8_t SC16IS7xxGPIO::readAllPins() {
+	uint8_t result = interface->readRegister(SC16IS7xxInterface::IOSTATE_REG);
+
+	return result;
+}
+
+void SC16IS7xxGPIO::enableInterrupts(pin_t pin, MCP23008InterruptOutputType outputType) {
+    if (!workerThread) {
+        workerThread = new Thread("uartgpio", threadFunctionStatic, (void *)this, OS_THREAD_PRIORITY_DEFAULT, 2048);        
+    }
+	mcuInterruptPin = pin;
+
+	wire.lock();
+
+	uint8_t reg = readRegister(REG_IOCON);
+
+	if (outputType == MCP23008InterruptOutputType::OPEN_DRAIN || 
+		outputType == MCP23008InterruptOutputType::OPEN_DRAIN_NO_PULL) {
+
+		if (mcuInterruptPin != PIN_INVALID) {
+			if (outputType == MCP23008InterruptOutputType::OPEN_DRAIN) {
+				::pinMode(pin, INPUT_PULLUP);
+			}
+			else {
+				::pinMode(pin, INPUT);
+			}
+		}
+		// Set ODR bit
+		reg |= 0b100;
+
+		// INTPOL is ignored when ODR is set
+	}
+	else {
+		if (mcuInterruptPin != PIN_INVALID) {
+			// Output is push-pull
+			::pinMode(pin, INPUT);
+		}
+
+		// Clear ODR bit
+		reg &= ~0b100;
+
+		if (outputType == MCP23008InterruptOutputType::ACTIVE_HIGH) {
+			// Set INTPOL
+			reg |= 0b010;
+		}
+	}
+
+	writeRegister(REG_IOCON, reg);
+
+	wire.unlock();
+}
+
+void SC16IS7xxGPIO::attachInterrupt(uint16_t pin, InterruptMode mode, std::function<void(bool)> handler) {
+	detachInterrupt(pin);
+	
+	MCP23008InterruptHandler *h = new MCP23008InterruptHandler();
+	h->pin = pin;
+	h->mode = mode;
+	h->handler = handler;
+	h->lastState = digitalRead(pin);
+
+	os_mutex_lock(handlersMutex);
+	interruptHandlers.push_back(h);
+	os_mutex_unlock(handlersMutex);
+
+	// Enable this pin for interrupts
+	wire.lock();
+	uint8_t reg = readRegister(REG_GPINTEN);
+	reg |= 1 << pin;
+	writeRegister(REG_GPINTEN, reg);
+	wire.unlock();
+}
+
+void SC16IS7xxGPIO::detachInterrupt(uint16_t pin) {
+	// Disable this pin for interrupts
+	wire.lock();
+	uint8_t reg = readRegister(REG_GPINTEN);
+	reg &= ~(1 << pin);
+	writeRegister(REG_GPINTEN, reg);
+	wire.unlock();
+
+	// Remove from the vector of handlers
+	os_mutex_lock(handlersMutex);
+	for(auto it = interruptHandlers.begin(); it != interruptHandlers.end(); it++) {
+		MCP23008InterruptHandler *h = *it;
+		if (h->pin == pin) {
+			interruptHandlers.erase(it);
+			delete h;
+			break;
+		}
+	}
+	os_mutex_unlock(handlersMutex);
+}
+
+void SC16IS7xxGPIO::handleInterrupts() {
+	// This runs from a worker thread!
+
+	if (mcuInterruptPin != PIN_INVALID && pinReadFast(mcuInterruptPin) == HIGH) {
+		// No interrupt
+		return;
+	}
+
+	wire.lock();
+
+	// Read the INTF register. A bit will be 1 if the port caused an interrupt
+	uint8_t intFlag = readRegister(REG_INTF);
+
+	// Reads the values 
+	uint8_t intValue = readRegister(REG_INTCAP);
+
+	wire.unlock();
+
+	if (intFlag == 0) {
+		// This will happen if interrupt mode is used with PIN_INVALID. You
+		// want the latching behavior, but don't have a spare GPIO. 
+		// But in the cast of intFlag == 0, there was no interrupt
+		// but we still needed an I2C transaction to find it out.
+		return;
+	}
+
+	// Log.info("intFlag=%02x intValue=%02x intf after=%02x", intFlag, intValue, readRegister(REG_INTF));
+
+	os_mutex_lock(handlersMutex);
+	for(auto it = interruptHandlers.begin(); it != interruptHandlers.end(); it++) {
+		MCP23008InterruptHandler *h = *it;
+
+		if (((1 << h->pin) & intFlag) != 0) {
+			// This pin caused an interrupt
+			bool bValue = (intValue & (1 << h->pin)) != 0;
+
+			switch(h->mode) {
+			case RISING:
+				if (bValue) {
+					h->handler(bValue);
+				}
+				break;
+
+			case FALLING:
+				if (!bValue) {
+					h->handler(bValue);
+				}
+				break;
+
+			case CHANGE:
+				h->handler(bValue);
+				break;
+			}
+		}
+	}
+	os_mutex_unlock(handlersMutex);
+
+}
+
+bool SC16IS7xxGPIO::readRegisterPin(uint8_t reg, uint16_t pin) {
+	if (!pinAvailable(pin)) {
+		
+		return false;
+	}
+
+	return interface->readRegister(reg) & (1 << pin);
+}
+
+bool SC16IS7xxGPIO::writeRegisterPin(uint8_t reg, uint16_t pin, bool value) {
+	if (!pinAvailable(pin)) {
+		return false;
+	}
+
+	uint8_t regValue = interface->readRegister(reg);
+
+	if (value) {
+		regValue |= (1 << pin);
+	}
+	else {
+		regValue &= ~(1 << pin);
+	}
+
+	return interface->writeRegister(reg, regValue);
+}
+
+void SC16IS7xxGPIO::threadFunction() {
+    while(true) {
+
+        delay(1);
+    }
+}
+
+// [static]
+void SC16IS7xxGPIO::threadFunctionStatic(void *param) {
+    SC16IS7xxGPIO *This = (SC16IS7xxGPIO *)param;
+    This->threadFunction();
+}
+
+//
+// SC16IS7xxInterface
+//
 SC16IS7xxInterface &SC16IS7xxInterface::withI2C(TwoWire *wire, uint8_t addr) {
     this->wire = wire;
     this->i2cAddr = addr;
