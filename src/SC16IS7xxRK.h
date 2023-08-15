@@ -387,6 +387,7 @@ protected:
     size_t bufferedReadSize = 0; //!< Size of buffer for buffered read (0 = buffered read not enabled)
     uint8_t readFifoInterruptLevel = 30; //!< Interrupt when FIFO has 30 characters (or timeout)
     bool readDataAvailable = false; //!< Set from interruptRxTimeout and interruptRHR
+    bool hasIOInterrupt = false; //!< Set from interruptIO
 
     std::function<void()> interruptLineStatus = nullptr; //!< Function to call for a line status interrupt
     std::function<void()> interruptRxTimeout = nullptr; //!< Function to call for stale data in RX FIFO
@@ -526,7 +527,6 @@ public:
      * @return SC16IS7xxInterface& 
      */
     SC16IS7xxInterface &withIOLatched(bool enable = true) { enableGPIO = true; ioLatched = enable; return *this; };
-
 
     /**
      * @brief Do a software reset of the device

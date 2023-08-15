@@ -310,7 +310,31 @@ bool SC16IS7xxPort::begin(int baudRate, uint32_t options) {
     }
 
     if (interface->enableGPIO) {
-        // Enable GPIO mode (this does not set the individual pin modes, etc.)
+        // Enable GPIO mode
+
+
+        if (interface->irqPin != PIN_INVALID) {
+            // Set the bit to 1 for all inputs that generate interrupts
+        	interface->writeRegister(0, SC16IS7xxInterface::IOINTENA_REG, ~interface->iodir);     
+
+            interruptIO = [this]() {
+                hasIOInterrupt = true;
+            };
+        }
+
+        interface->writeRegister(0, SC16IS7xxInterface::IODIR_REG, interface->iodir);     
+
+        // Set IOCONTROL_REG
+
+        interface->registerThreadFunction([this]() {
+            // This code is called from the worker thread
+            if (interface->irqPin != PIN_INVALID && !hasIOInterrupt) {
+                return;
+            }          
+
+            uint8_t ioState = interface->readRegister(0, SC16IS7xxInterface::IOSTATE_REG);
+
+        });
     }
 
 	return true;
