@@ -184,7 +184,7 @@ bool SC16IS7xxPort::begin(int baudRate, uint32_t options) {
                     if (!readDataAvailable) {
                         return;
                     }
-                    _uartLogger.trace("readDataAvailable=true in buffered read thread");
+                    // _uartLogger.trace("readDataAvailable=true in buffered read thread");
                     readDataAvailable = false;
                 }
 
@@ -301,7 +301,7 @@ bool SC16IS7xxPort::begin(int baudRate, uint32_t options) {
             interruptRHR = interruptRxTimeout = [this]() {
                 // Received data, or timeout, release the read mutex
                 readDataAvailable = true;
-                _uartLogger.trace("readDataAvailable set in IRQ handler");
+                // _uartLogger.trace("readDataAvailable set in IRQ handler");
             };
         }
 
@@ -454,60 +454,74 @@ int SC16IS7xxPort::read(uint8_t *buffer, size_t size) {
 
 
 void SC16IS7xxPort::handleIIR() {
-    uint8_t iir = interface->readRegister(channel, SC16IS7xxInterface::IER_REG) & 0x3f;
+    uint8_t iir = interface->readRegister(channel, SC16IS7xxInterface::FCR_IIR_REG) & 0x3f;
 
-    _uartLogger.trace("handleIIR 0x%02x", iir);
+    const char *reason = "unknown";
 
     switch(iir) {
         case 0b000110:
             if (interruptLineStatus) {
                 interruptLineStatus();
             }
+            reason = "line status";
             break;
 
         case 0b001100:
             if (interruptRxTimeout) {
                 interruptRxTimeout();
             }
+            reason = "rx timeout";
             break;
 
         case 0b000100:
             if (interruptRHR) {
                 interruptRHR();
             }
+            reason = "RHR";
             break;
 
         case 0b000010:
             if (interruptTHR) {
                 interruptTHR();
             }
+            reason = "THR";
             break;
 
         case 0b000000:
             if (interruptModemStatus) {
                 interruptModemStatus();
             }
+            reason = "modem status";
             break;
 
         case 0b110000:
             if (interruptIO) {
                 interruptIO();
             }
+            reason = "IO";
             break;
 
         case 0b010000:
             if (interruptXoff) {
                 interruptXoff();
             }
+            reason = "Xoff";
             break;
 
         case 0b100000:
             if (interruptCTS_RTS) {
                 interruptCTS_RTS();
             }
+            reason = "CTS RTS";
+            break;
+
+        default:
             break;
 
     }
+
+    _uartLogger.trace("handleIIR %s (0x%02x)", reason, iir);
+
 }
 
 
@@ -550,7 +564,7 @@ SC16IS7xxInterface &SC16IS7xxInterface::withIRQ(pin_t _irqPin, PinMode mode) {
         // This is called 1000 times per second from the worker thread
         if (pinReadFast(irqPin) == LOW) {
             // Interrupt triggered
-            _uartLogger.trace("irqPin LOW");
+            // _uartLogger.trace("irqPin LOW");
 
             forEachPort([](SC16IS7xxPort *port) {
                 // Each port has to check the IIR register
