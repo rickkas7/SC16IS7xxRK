@@ -9,7 +9,7 @@ SYSTEM_THREAD(ENABLED);
 
 
 // - Connect the SC16IS7xx by SPI
-// - Use D2 as the SPI CS
+// - Use D4 as the SPI CS
 // - Use D3 as IRQ
 // - Connect SC16IS7xx TX to Particle RX (not used in this demo)
 // - Connect SC16IS7xx RX to Particle TX
@@ -49,6 +49,12 @@ void setup()
     // Enable interrupt mode
     extSerial.withIRQ(IRQ_PIN); 
 
+    // Interrupt mode is only useful when using buffered read mode or GPIO. It has
+    // no effect in other modes because the chip needs to be queried anyway.
+    // Be sure to enable interrupt mode using withIRQ() before enabling
+    // buffered read!
+    extSerial.withBufferedRead(1024);
+
     extSerial.begin(baudRate);
     
 }
@@ -64,6 +70,7 @@ void loop()
 
     int count = extSerial.read(readBuf, sizeof(readBuf));
     if (count > 0) {
+        Log.trace("read %d bytes", count);
         for(int ii = 0; ii < count; ii++, readIndex++) {
             if (readBuf[ii] != (readIndex & 0xff)) {
                 if (!valueWarned) {
@@ -86,7 +93,7 @@ void sendingThreadFunction(void *param)
         int avail = Serial1.availableForWrite();
         
         if (avail > 10) {
-            int count = rand() % (avail - 5);
+            int count = rand() % (avail - 6) + 1;
 
             for(int ii = 0; ii < count; ii++) {
                 Serial1.write(writeIndex++ & 0xff);

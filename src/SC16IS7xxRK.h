@@ -178,7 +178,7 @@ public:
      * 
      * @param bufferSize Buffer size in bytes. The buffer is allocated on the heap.
      */
-    SC16IS7xxPort &withBufferedRead(size_t bufferSize);
+    SC16IS7xxPort &withBufferedRead(size_t bufferSize) { this->bufferedReadSize = bufferSize; return *this; };
 
     /**
      * @brief Sets the auto RTS hardware flow control levels. Call before begin() to change levels
@@ -307,6 +307,7 @@ public:
 	 */
 	virtual int read(uint8_t *buffer, size_t size);
 
+
     // Mask 0x3f of options (low 6 bits) are the data bits, parity, and stop bits
 
 	static const uint32_t OPTIONS_8N1 = 0b000011; //!< 8 data bits, no parity, 1 stop bit
@@ -364,13 +365,18 @@ protected:
 	uint8_t peekByte = 0; //!< The byte that was read if hasPeek == true
 	bool writeBlocksWhenFull = true;
     uint8_t channel = 0; //!< Chip channel number for this port (0 or 1)
+    uint8_t ier = 0; //!< Value of the IER register, set from begin()
     uint8_t lcr = 0; //<! Value of the LCR register, set from begin()
     uint8_t efr = 0; //<! Value of the EFR register, set from begin()
     uint8_t mcr = 0; //!< Value of the MCR register, set from begin()
     uint8_t tcr = (uint8_t)(30 << 4 | 60); //!< Default TCR value for hardware flow control (resume 30, halt 60)
+    uint8_t tlr = 0;
     SC16IS7xxInterface *interface = nullptr; //!< Interface object for this chip
 
     SC16IS7xxBuffer *readBuffer = nullptr; //!< Buffer object when using withReadBuffer
+    size_t bufferedReadSize = 0; //!< Size of buffer for buffered read (0 = buffered read not enabled)
+    uint8_t readFifoInterruptLevel = 30; //!< Interrupt when FIFO has 30 characters (or timeout)
+    Mutex readMutex;
 
     std::function<void()> interruptLineStatus = nullptr; //!< Function to call for a line status interrupt
     std::function<void()> interruptRxTimeout = nullptr; //!< Function to call for stale data in RX FIFO
@@ -428,6 +434,8 @@ public:
      * Because of the way I2C works, the speed is selected per bus and not per I2C slave
      * device like SPI. If all of your I2C devices work at 400 kHz, using `Wire.setSpeed(CLOCK_SPEED_400KHZ)`
      * is recommended for better performance.
+     * 
+     * This call must be make before any begin() calls. It will have no effect after begin().
      */
     SC16IS7xxInterface &withI2C(TwoWire *wire = &Wire, uint8_t addr = 0);
 
@@ -438,6 +446,8 @@ public:
      * @param csPin The pin used for chip select
      * @param speedMHz The SPI bus speed in MHz.
      * @return SC16IS7xxInterface& 
+     * 
+     * This call must be make before any begin() calls. It will have no effect after begin().
      */
     SC16IS7xxInterface &withSPI(SPIClass *spi, pin_t csPin, size_t speedMHz);
 
@@ -447,16 +457,26 @@ public:
      * @param freqHz Typically 1843200 (default, 1.8432 MHz), or 3072000 (3.072 MHz).
      * @return * SC16IS7xxInterface& 
      * 
+     * This call must be make before any begin() calls. It will have no effect after begin().
      */
     SC16IS7xxInterface &withOscillatorFrequency(int freqHz) { this->oscillatorFreqHz = freqHz; return *this; };
 
 
+    /**
+     * @brief Enable GPIO mode on SC16IS750, SC16IS760, SC16IS752, SC16IS762
+     * 
+     * This call must be make before any begin() calls. It will have no effect after begin().
+     */
+    SC16IS7xxInterface &withEnableGPIO(bool enable = true) { this->enableGPIO = enable; return *this; }
+    
     /**
      * @brief Sets the pin used for IRQ (hardware interrupts). This is optional.
      * 
      * @param irqPin Pin to use (D3, D4, ...)
      * @param mode The pin mode. Default is INPUT_PULLUP. Could be INPUT instead.
      * @return SC16IS7xxInterface& 
+     * 
+     * This call must be make before any begin() calls. It will have no effect after begin().
      */
     SC16IS7xxInterface &withIRQ(pin_t irqPin, PinMode mode = INPUT_PULLUP);
 
@@ -494,7 +514,6 @@ public:
      * @param callback 
      */
     virtual void forEachPort(std::function<void(SC16IS7xxPort *port)> callback) = 0;
-
 
 	static const uint8_t RHR_THR_REG = 0x00; //!< Receive Holding Register (RHR) and Transmit Holding Register (THR)
 	static const uint8_t IER_REG = 0x01;  //!< Interrupt Enable Register (IER)
@@ -611,6 +630,7 @@ protected:
     pin_t irqPin = PIN_INVALID; //!< Hardware IRQ from SC16IS7xx, optional.
     size_t irqFifoLevel = 30; //!< Number of bytes to trigger IRQ
     SPISettings spiSettings; //!< When using SPI, the SPISettings (bit rate, bit order, mode).
+    bool enableGPIO; //!< Enable GPIO mode
     int oscillatorFreqHz = 1843200; //!< Oscillator frequency. Default is 1.8432 MHz, can also be 3072000 (3.072 MHz).
     Thread *workerThread = nullptr; //!< Worker thread, created if registerThreadFunction() is called.
     std::vector<std::function<void()>> threadFunctions; //!< Functions to call from the worker thread, added using registerThreadFunction()

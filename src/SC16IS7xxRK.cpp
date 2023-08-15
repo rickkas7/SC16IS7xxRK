@@ -147,40 +147,6 @@ void SC16IS7xxBuffer::writeCallback(std::function<void(uint8_t *buffer, size_t &
 }
 
 
-SC16IS7xxPort &SC16IS7xxPort::withBufferedRead(size_t bufferSize) {
-    
-    if (!readBuffer) {
-        readBuffer = new SC16IS7xxBuffer();
-        if (readBuffer) {
-            readBuffer->init(bufferSize);
-
-            interface->registerThreadFunction([this]() {
-                // This code is called from the worker thread
-
-                size_t rxAvailable = available();
-                if (rxAvailable) {                    
-                    readBuffer->writeCallback([this, &rxAvailable](uint8_t *buffer, size_t &size) {
-                        if (size > rxAvailable) {
-                            size = rxAvailable;
-                        }
-                        if (size > interface->readInternalMax()) {
-                            size = interface->readInternalMax();
-                        }                        
-                        if (size > 0) {
-                            interface->readInternal(channel, buffer, size);
-                            rxAvailable -= size;
-                        }
-                    });
-                }
-
-            });
-        }
-    }
-    
-
-    return *this;
-}
-
 SC16IS7xxPort &SC16IS7xxPort::withTransmissionControlLevels(uint8_t haltLevel, uint8_t resumeLevel) {
     if (haltLevel > resumeLevel) {
         tcr = (uint8_t)((haltLevel & 0xF) << 4 | (resumeLevel & 0xf));
@@ -199,6 +165,47 @@ bool SC16IS7xxPort::begin(int baudRate, uint32_t options) {
 	// OSC XO 1.8432MHz CMOS SMD $1.36
 	// https://www.digikey.com/product-detail/en/avx-corp-kyocera-corp/KC3225K1.84320C1GE00/1253-1488-1-ND/5322590
 	// Another suggested frequency from the data sheet is 3.072 MHz
+
+    // Enable buffered read mode
+    if (bufferedReadSize != 0) {
+        // TODO: Delete readBuffer if it already exists
+        
+        readBuffer = new SC16IS7xxBuffer();
+        if (readBuffer) {
+            readBuffer->init(bufferedReadSize);
+
+            // Initially lock the mutex until the IRQ handler unlocks it
+            readMutex.trylock();
+
+            interface->registerThreadFunction([this]() {
+                // This code is called from the worker thread
+
+                if (interface->irqPin != PIN_INVALID) {
+                    // Blocks until the interrupt handler unlocks
+                    readMutex.lock();
+                    _uartLogger.trace("readMutex obtained in read thread");
+                }
+
+                size_t rxAvailable = available();
+                if (rxAvailable) {                    
+                    readBuffer->writeCallback([this, &rxAvailable](uint8_t *buffer, size_t &size) {
+                        if (size > rxAvailable) {
+                            size = rxAvailable;
+                        }
+                        if (size > interface->readInternalMax()) {
+                            size = interface->readInternalMax();
+                        }                        
+                        if (size > 0) {
+                            interface->readInternal(channel, buffer, size);
+                            rxAvailable -= size;
+                        }
+                    });
+                }
+            });
+        }
+    }
+
+    // TODO: Do we want to have buffered write mode as well?
 
 	// The divider devices the clock frequency to 16x the baud rate
 	int div = interface->oscillatorFreqHz / (baudRate * 16);
@@ -263,6 +270,41 @@ bool SC16IS7xxPort::begin(int baudRate, uint32_t options) {
 
 	// Enable FIFOs
 	interface->writeRegister(channel, SC16IS7xxInterface::FCR_IIR_REG, 0x07); // Enable FIFO, Clear RX and TX FIFOs
+
+    ier = 0;
+    if (interface->irqPin != PIN_INVALID) {
+        // Enable interrupt mode
+        _uartLogger.trace("enabling irqPin=%d", interface->irqPin);
+
+        if (readBuffer) {
+            ier |= 0b00000001; // Enable RHR interrupt
+
+            if (readFifoInterruptLevel < 4) {
+                readFifoInterruptLevel = 4;
+            }
+            if (readFifoInterruptLevel > 64) {
+                readFifoInterruptLevel = 64;
+            }
+            tlr &= 0x0f;
+            tlr |= (uint8_t)(readFifoInterruptLevel << 4);
+
+        	interface->writeRegister(channel, SC16IS7xxInterface::TLR_REG, tlr);
+            _uartLogger.trace("tlr=0x%02x", tlr);
+
+            interruptRHR = interruptRxTimeout = [this]() {
+                // Received data, or timeout, release the read mutex
+                readMutex.unlock();
+                _uartLogger.trace("readMutex unlocked in IRQ handler");
+            };
+        }
+
+        _uartLogger.trace("ier=0x%02x", ier);
+    }
+	interface->writeRegister(channel, SC16IS7xxInterface::IER_REG, ier);
+
+    if (interface->enableGPIO) {
+        // Enable GPIO mode (this does not set the individual pin modes, etc.)
+    }
 
 	return true;
 }
@@ -407,6 +449,8 @@ int SC16IS7xxPort::read(uint8_t *buffer, size_t size) {
 void SC16IS7xxPort::handleIIR() {
     uint8_t iir = interface->readRegister(channel, SC16IS7xxInterface::IER_REG) & 0x3f;
 
+    _uartLogger.trace("handleIIR 0x%02x", iir);
+
     switch(iir) {
         case 0b000110:
             if (interruptLineStatus) {
@@ -499,9 +543,12 @@ SC16IS7xxInterface &SC16IS7xxInterface::withIRQ(pin_t _irqPin, PinMode mode) {
         // This is called 1000 times per second from the worker thread
         if (pinReadFast(irqPin) == LOW) {
             // Interrupt triggered
+            _uartLogger.trace("irqPin LOW");
 
-            // TODO: Make this work properly for channels
-
+            forEachPort([](SC16IS7xxPort *port) {
+                // Each port has to check the IIR register
+                port->handleIIR();
+            });
 
         }
     });
