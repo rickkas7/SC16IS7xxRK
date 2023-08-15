@@ -58,3 +58,16 @@ Note that the serial outputs are 3.3V and the inputs must be 3.3V or 5V. If you 
 
 Automatic hardware flow control (CTS/RTS) can
 
+## Interrupts
+
+This library optionally can use the hardware interrupt (IRQ) feature of the SC16IS7xx. Use is optional and not as useful as you'd think. In particular, it will not make data transfer faster or have lower latency!
+
+- It is not possible to start an I2C or SPI transaction from an ISR. This is necessary in order to determine which interrupt triggered.
+
+- Since you can only start transactions from a thread, interrupts don't reduce the latency any more than polling.
+
+- Interrupts do have a small benefit in that the thread would not have to query the chip on every loop, 1000 times per second. This is especially true when using I2C and you are infrequently transferring data.
+
+- Received data interrupts are only used in buffered read mode. In normal mode, the chip is queried on every read anyway, and interrupts would have no benefit.
+
+
