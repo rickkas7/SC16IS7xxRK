@@ -189,6 +189,15 @@ public:
      */
     SC16IS7xxPort &withTransmissionControlLevels(uint8_t haltLevel, uint8_t resumeLevel);
 
+
+    /**
+     * @brief Enable using GPIO as modem control (RI, CD, DTR, DSR) instead of regular GPIO. Default is GPIO mode.
+     * 
+     * @param enable optional parameter; if missing enables modem control mode
+     * @return SC16IS7xxPort& 
+     */
+    SC16IS7xxPort &withModemControl(bool enable = true) { enableModemControl = enable; return *this; };
+
 	/**
 	 * @brief Set up the chip. You must do this before reading or writing.
 	 *
@@ -370,7 +379,8 @@ protected:
     uint8_t efr = 0; //<! Value of the EFR register, set from begin()
     uint8_t mcr = 0; //!< Value of the MCR register, set from begin()
     uint8_t tcr = (uint8_t)(30 << 4 | 60); //!< Default TCR value for hardware flow control (resume 30, halt 60)
-    uint8_t tlr = 0;
+    uint8_t tlr = 0; //!< Transmission level register
+    bool enableModemControl = false; // GPIO pins are used for modem control (IOControl register)
     SC16IS7xxInterface *interface = nullptr; //!< Interface object for this chip
 
     SC16IS7xxBuffer *readBuffer = nullptr; //!< Buffer object when using withReadBuffer
@@ -480,6 +490,44 @@ public:
      */
     SC16IS7xxInterface &withIRQ(pin_t irqPin, PinMode mode = INPUT_PULLUP);
 
+
+    /**
+     * @brief Enable GPIO mode.
+     * 
+     * @param value 
+     * @return * SC16IS7xxInterface& 
+     * 
+     * Calling withIODirection and withIOLatched will also enable GPIO mode; this 
+     * call is only necessary if you are using GPIO only as non-latched inputs.
+     * 
+     * This call must be make before any begin() calls. It will have no effect after begin().
+     */
+    SC16IS7xxInterface &withEnableGPIO(bool value = true) { enableGPIO = value; return *this; };
+
+    /**
+     * @brief Sets GPIO pin direction (1 = output, 0 = input). Default is all input.
+     * 
+     * @param value 
+     * @return SC16IS7xxInterface& 
+     * 
+     * Bit 7 (MSB), mask 0x80 is GPIO7, constant is GPIO_7.
+     * Bit 6, mask 0x40 or 0b01000000 is GPIO6, constant is GPIO_6.
+     * ...
+     * Bit 0 (LSB), mask 0x01, is GPIO0, constant is GPIO_0.
+     * 
+     * This call must be make before any begin() calls. It will have no effect after begin().
+     */
+    SC16IS7xxInterface &withIODirection(uint8_t value) { enableGPIO = true; iodir = value; return *this; };
+    
+    /**
+     * @brief Enable GPIO input are latching. Default is not latched.
+     * 
+     * @param enable 
+     * @return SC16IS7xxInterface& 
+     */
+    SC16IS7xxInterface &withIOLatched(bool enable = true) { enableGPIO = true; ioLatched = enable; return *this; };
+
+
     /**
      * @brief Do a software reset of the device
      */
@@ -515,6 +563,7 @@ public:
      */
     virtual void forEachPort(std::function<void(SC16IS7xxPort *port)> callback) = 0;
 
+
 	static const uint8_t RHR_THR_REG = 0x00; //!< Receive Holding Register (RHR) and Transmit Holding Register (THR)
 	static const uint8_t IER_REG = 0x01;  //!< Interrupt Enable Register (IER)
 	static const uint8_t FCR_IIR_REG = 0x02; //!< Interrupt Identification Register (IIR) and FIFO Control Register (FCR)
@@ -548,6 +597,17 @@ public:
 	static const uint8_t XON2_REG = 0x05; //!< Xon2 word
 	static const uint8_t XOFF1_REG = 0x06; //!< Xoff1 word
 	static const uint8_t XOFF2_REG = 0x07; //!< Xoff2 word
+
+    // GPIO pin constants
+    static const uint8_t GPIO_7 = 0b10000000; //!< Mask for pin 7 (MSB), 0x80
+    static const uint8_t GPIO_6 = 0b01000000; //!< Mask for pin
+    static const uint8_t GPIO_5 = 0b00100000; //!< Mask for pin
+    static const uint8_t GPIO_4 = 0b00010000; //!< Mask for pin
+    static const uint8_t GPIO_3 = 0b00001000; //!< Mask for pin
+    static const uint8_t GPIO_2 = 0b00000100; //!< Mask for pin
+    static const uint8_t GPIO_1 = 0b00000010; //!< Mask for pin
+    static const uint8_t GPIO_0 = 0b00000001; //!< Mask for pin 0 (LSB), 0x01
+
 
 protected:
     SC16IS7xxInterface() {}; //!< You cannot instantiate this directly
@@ -630,7 +690,9 @@ protected:
     pin_t irqPin = PIN_INVALID; //!< Hardware IRQ from SC16IS7xx, optional.
     size_t irqFifoLevel = 30; //!< Number of bytes to trigger IRQ
     SPISettings spiSettings; //!< When using SPI, the SPISettings (bit rate, bit order, mode).
-    bool enableGPIO; //!< Enable GPIO mode
+    bool enableGPIO = false; //!< Enable GPIO mode
+    bool ioLatched = false; //!< GPIO inputs are latched
+    uint8_t iodir = 0; //!< Value of the iodir (IO direction) register
     int oscillatorFreqHz = 1843200; //!< Oscillator frequency. Default is 1.8432 MHz, can also be 3072000 (3.072 MHz).
     Thread *workerThread = nullptr; //!< Worker thread, created if registerThreadFunction() is called.
     std::vector<std::function<void()>> threadFunctions; //!< Functions to call from the worker thread, added using registerThreadFunction()
