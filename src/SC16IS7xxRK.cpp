@@ -169,21 +169,23 @@ bool SC16IS7xxPort::begin(int baudRate, uint32_t options) {
     // Enable buffered read mode
     if (bufferedReadSize != 0) {
         // TODO: Delete readBuffer if it already exists
-        
+
         readBuffer = new SC16IS7xxBuffer();
         if (readBuffer) {
             readBuffer->init(bufferedReadSize);
 
-            // Initially lock the mutex until the IRQ handler unlocks it
-            readMutex.trylock();
+            readDataAvailable = false;
 
             interface->registerThreadFunction([this]() {
                 // This code is called from the worker thread
 
                 if (interface->irqPin != PIN_INVALID) {
                     // Blocks until the interrupt handler unlocks
-                    readMutex.lock();
-                    _uartLogger.trace("readMutex obtained in read thread");
+                    if (!readDataAvailable) {
+                        return;
+                    }
+                    _uartLogger.trace("readDataAvailable=true in buffered read thread");
+                    readDataAvailable = false;
                 }
 
                 size_t rxAvailable = available();
@@ -262,6 +264,12 @@ bool SC16IS7xxPort::begin(int baudRate, uint32_t options) {
     // options set break, parity, stop bits, and word length
     lcr = (uint8_t)(options & 0x3f);
 
+    // Writing to the divisor latches DLL and DLH to set the baud clock must not be done during Sleep mode. 
+    // Therefore, it is advisable to disable Sleep mode using IER[4] before writing to DLL or DLH.
+    // The power-on state is 0, and we will change it below if necessary to enable interrupts
+    ier = 0;
+    interface->writeRegister(channel, SC16IS7xxInterface::IER_REG, ier);
+
     // DLL_REG and DHL_REG are accessible only when LCR[7] = 1 and not 0xBF.
 	interface->writeRegister(channel, SC16IS7xxInterface::LCR_REG, SC16IS7xxInterface::LCR_SPECIAL_ENABLE_DIVISOR_LATCH); // 0x80
 	interface->writeRegister(channel, SC16IS7xxInterface::DLL_REG, div & 0xff);
@@ -271,7 +279,6 @@ bool SC16IS7xxPort::begin(int baudRate, uint32_t options) {
 	// Enable FIFOs
 	interface->writeRegister(channel, SC16IS7xxInterface::FCR_IIR_REG, 0x07); // Enable FIFO, Clear RX and TX FIFOs
 
-    ier = 0;
     if (interface->irqPin != PIN_INVALID) {
         // Enable interrupt mode
         _uartLogger.trace("enabling irqPin=%d", interface->irqPin);
@@ -285,22 +292,22 @@ bool SC16IS7xxPort::begin(int baudRate, uint32_t options) {
             if (readFifoInterruptLevel > 64) {
                 readFifoInterruptLevel = 64;
             }
-            tlr &= 0x0f;
-            tlr |= (uint8_t)(readFifoInterruptLevel << 4);
+            tlr &= 0x0f; // preserve LHR level
+            tlr |= (uint8_t)((readFifoInterruptLevel / 4) << 4);
 
         	interface->writeRegister(channel, SC16IS7xxInterface::TLR_REG, tlr);
             _uartLogger.trace("tlr=0x%02x", tlr);
 
             interruptRHR = interruptRxTimeout = [this]() {
                 // Received data, or timeout, release the read mutex
-                readMutex.unlock();
-                _uartLogger.trace("readMutex unlocked in IRQ handler");
+                readDataAvailable = true;
+                _uartLogger.trace("readDataAvailable set in IRQ handler");
             };
         }
 
         _uartLogger.trace("ier=0x%02x", ier);
+    	interface->writeRegister(channel, SC16IS7xxInterface::IER_REG, ier);
     }
-	interface->writeRegister(channel, SC16IS7xxInterface::IER_REG, ier);
 
     if (interface->enableGPIO) {
         // Enable GPIO mode (this does not set the individual pin modes, etc.)

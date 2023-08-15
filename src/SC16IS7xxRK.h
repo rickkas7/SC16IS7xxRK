@@ -376,7 +376,7 @@ protected:
     SC16IS7xxBuffer *readBuffer = nullptr; //!< Buffer object when using withReadBuffer
     size_t bufferedReadSize = 0; //!< Size of buffer for buffered read (0 = buffered read not enabled)
     uint8_t readFifoInterruptLevel = 30; //!< Interrupt when FIFO has 30 characters (or timeout)
-    Mutex readMutex;
+    bool readDataAvailable = false; //!< Set from interruptRxTimeout and interruptRHR
 
     std::function<void()> interruptLineStatus = nullptr; //!< Function to call for a line status interrupt
     std::function<void()> interruptRxTimeout = nullptr; //!< Function to call for stale data in RX FIFO
