@@ -309,33 +309,7 @@ bool SC16IS7xxPort::begin(int baudRate, uint32_t options) {
     	interface->writeRegister(channel, SC16IS7xxInterface::IER_REG, ier);
     }
 
-    if (interface->enableGPIO) {
-        // Enable GPIO mode
-
-
-        if (interface->irqPin != PIN_INVALID) {
-            // Set the bit to 1 for all inputs that generate interrupts
-        	interface->writeRegister(0, SC16IS7xxInterface::IOINTENA_REG, ~interface->iodir);     
-
-            interruptIO = [this]() {
-                hasIOInterrupt = true;
-            };
-        }
-
-        interface->writeRegister(0, SC16IS7xxInterface::IODIR_REG, interface->iodir);     
-
-        // Set IOCONTROL_REG
-
-        interface->registerThreadFunction([this]() {
-            // This code is called from the worker thread
-            if (interface->irqPin != PIN_INVALID && !hasIOInterrupt) {
-                return;
-            }          
-
-            uint8_t ioState = interface->readRegister(0, SC16IS7xxInterface::IOSTATE_REG);
-
-        });
-    }
+    interface->commonBegin();
 
 	return true;
 }
@@ -519,8 +493,8 @@ void SC16IS7xxPort::handleIIR() {
             break;
 
         case 0b110000:
-            if (interruptIO) {
-                interruptIO();
+            if (interface->interruptIO) {
+                interface->interruptIO();
             }
             reason = "IO";
             break;
@@ -640,6 +614,44 @@ bool SC16IS7xxInterface::powerOnCheck() {
     }
     return good;
 }
+
+void SC16IS7xxInterface::commonBegin() {
+    if (didCommonBegin) {
+        return;
+    }
+    didCommonBegin = true;
+
+
+    if (enableGPIO) {
+        // Enable GPIO mode
+
+
+        if (irqPin != PIN_INVALID) {
+            // Set the bit to 1 for all inputs that generate interrupts
+        	writeRegister(0, SC16IS7xxInterface::IOINTENA_REG, ~interface->iodir);     
+
+            interruptIO = [this]() {
+                hasIOInterrupt = true;
+            };
+        }
+
+        writeRegister(0, SC16IS7xxInterface::IODIR_REG, interface->iodir);     
+
+        // Set IOCONTROL_REG
+
+        registerThreadFunction([this]() {
+            // This code is called from the worker thread
+            if (irqPin != PIN_INVALID && !hasIOInterrupt) {
+                return;
+            }          
+
+            uint8_t ioState = readRegister(0, SC16IS7xxInterface::IOSTATE_REG);
+
+        });
+    }
+
+}
+
 
 void SC16IS7xxInterface::beginTransaction() {
     if (spi) {

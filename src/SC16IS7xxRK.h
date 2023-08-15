@@ -387,14 +387,12 @@ protected:
     size_t bufferedReadSize = 0; //!< Size of buffer for buffered read (0 = buffered read not enabled)
     uint8_t readFifoInterruptLevel = 30; //!< Interrupt when FIFO has 30 characters (or timeout)
     bool readDataAvailable = false; //!< Set from interruptRxTimeout and interruptRHR
-    bool hasIOInterrupt = false; //!< Set from interruptIO
 
     std::function<void()> interruptLineStatus = nullptr; //!< Function to call for a line status interrupt
     std::function<void()> interruptRxTimeout = nullptr; //!< Function to call for stale data in RX FIFO
     std::function<void()> interruptRHR = nullptr; //!< Function to call for RHR FIFO above level
     std::function<void()> interruptTHR = nullptr; //!< Function to call for THR FIFO below level
     std::function<void()> interruptModemStatus = nullptr; //!< Function to call for change in modem input status
-    std::function<void()> interruptIO = nullptr; //!< Function to call for GPIO interrupt
     std::function<void()> interruptXoff = nullptr; //!< Function to call for a received Xoff with software flow control, or special bytes
     std::function<void()> interruptCTS_RTS = nullptr; //!< Function to call for CTS or RTS transition low to high
 
@@ -624,6 +622,12 @@ protected:
     SC16IS7xxInterface& operator=(const SC16IS7xxInterface&) = delete;
 
     /**
+     * @brief Called from the port object begin() method to handle things that are not port-specific
+     */
+    void commonBegin();
+
+    /**
+     * 
      * @brief Begins a SPI or I2C transaction
      * 
      * A transaction is a group of related calls. Within the transaction other devices are prohibited
@@ -694,8 +698,11 @@ protected:
     bool ioLatched = false; //!< GPIO inputs are latched
     uint8_t iodir = 0; //!< Value of the iodir (IO direction) register
     int oscillatorFreqHz = 1843200; //!< Oscillator frequency. Default is 1.8432 MHz, can also be 3072000 (3.072 MHz).
+    bool didCommonBegin = false; //!< commonBegin() was called from port begin()
+    bool hasIOInterrupt = false; //!< Set from interruptIO
     Thread *workerThread = nullptr; //!< Worker thread, created if registerThreadFunction() is called.
     std::vector<std::function<void()>> threadFunctions; //!< Functions to call from the worker thread, added using registerThreadFunction()
+    std::function<void()> interruptIO = nullptr; //!< Function to call for GPIO interrupt
 
 
     friend class SC16IS7xxPort; //!< The port object calls the interface object and uses the register contents
