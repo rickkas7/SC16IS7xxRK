@@ -8,6 +8,10 @@ From the NXP datasheet:
 
 This library also supports the SC16IS752 and SC16IS762 dual UART.
 
+- Github repository: [https://github.com/rickkas7/SC16IS7xxRK](https://github.com/rickkas7/SC16IS7xxRK) 
+- [Browseable API docs](https://rickkas7.github.io/SC16IS7xxRK/index.html)
+- License: MIT (can be used in open or closed source projects, including commercial products)
+
 #### Chip features
 
 | SC16IS7xx | Ports | IrDA       | GPIO  | SPI Max |
