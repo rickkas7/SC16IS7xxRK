@@ -32,14 +32,12 @@ public:
      * @brief Allocate the buffer
      * 
      * @param bufSize Size of the buffer in bytes
-     * @param threadCallback 
-     * @return true 
-     * @return false 
+     * @return true The buffer was allocated
+     * @return false The buffer could not be allocated, typically out of heap space, or no contiguous block available
      * 
      * This is called from withBufferedRead(), 
      */
     bool init(size_t bufSize);
-
 
     // Read API
 
@@ -363,14 +361,14 @@ protected:
 
 	bool hasPeek = false; //!< There is a byte from the last peek() available
 	uint8_t peekByte = 0; //!< The byte that was read if hasPeek == true
-	bool writeBlocksWhenFull = true;
+	bool writeBlocksWhenFull = true; //!< The write call blocks until there's room to write to the buffer (true) or discards (false)
     uint8_t channel = 0; //!< Chip channel number for this port (0 or 1)
     uint8_t ier = 0; //!< Value of the IER register, set from begin()
-    uint8_t lcr = 0; //<! Value of the LCR register, set from begin()
-    uint8_t efr = 0; //<! Value of the EFR register, set from begin()
+    uint8_t lcr = 0; //!< Value of the LCR register, set from begin()
+    uint8_t efr = 0; //!< Value of the EFR register, set from begin()
     uint8_t mcr = 0; //!< Value of the MCR register, set from begin()
     uint8_t tcr = (uint8_t)(30 << 4 | 60); //!< Default TCR value for hardware flow control (resume 30, halt 60)
-    uint8_t tlr = 0;
+    uint8_t tlr = 0; //!< Value of the TLR register, set from begin()
     SC16IS7xxInterface *interface = nullptr; //!< Interface object for this chip
 
     SC16IS7xxBuffer *readBuffer = nullptr; //!< Buffer object when using withReadBuffer
@@ -494,6 +492,8 @@ public:
     /**
      * @brief Read a register
      *
+     * @param channel The channel (0-3).
+     * 
      * @param reg The register number to read. Note that this should be the register 0 - 16, before shifting for channel.
      */
 	uint8_t readRegister(uint8_t channel, uint8_t reg);
@@ -501,6 +501,8 @@ public:
 	/**
      * @brief Write a register
      *
+     * @param channel The channel (0-3).
+     * 
      * @param reg The register number to write. Note that this should be the register 0 - 16, before shifting for channel.
      *
      * @param value The value to write
@@ -537,8 +539,8 @@ public:
 
 	// Special register block
     static const uint8_t LCR_DEFAULT = 0x1D; //!< Power-on default value of LCR
-	static const uint8_t LCR_SPECIAL_ENABLE_DIVISOR_LATCH = 0x80; //!< 
-	static const uint8_t LCR_ENABLE_ENHANCED_FEATURE_REG = 0xbf; //!< 
+	static const uint8_t LCR_SPECIAL_ENABLE_DIVISOR_LATCH = 0x80; //!< LCR bit to enable setting divisor
+	static const uint8_t LCR_ENABLE_ENHANCED_FEATURE_REG = 0xbf; //!< LCR bit  to enable enhanced features
 	static const uint8_t DLL_REG = 0x00; //!< Divisor Latch LSB (DLL)
 	static const uint8_t DLH_REG = 0x01; //!< Divisor Latch MSB (DLH)
 
@@ -607,6 +609,11 @@ protected:
 	 */
 	size_t writeInternalMax() const;
 
+    /**
+     * @brief Adds a new function to be called from the worker thread
+     * 
+     * @param fn The function or lambda to call
+     */
     void registerThreadFunction(std::function<void()> fn);
 
     /**

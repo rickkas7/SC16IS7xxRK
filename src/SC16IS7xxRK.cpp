@@ -416,18 +416,6 @@ size_t SC16IS7xxPort::write(const uint8_t *buffer, size_t size) {
 	return written;
 }
 
-/**
- * @brief Read a multiple bytes to the serial port.
- *
- * @param buffer The buffer to read data into. It will not be null terminated.
- *
- * @param size The maximum number of bytes to read (buffer size)
- *
- * @return The number of bytes actually read or -1 if there are no bytes available to read.
- *
- * This is faster than reading a single byte at time because up to 32 bytes of data can
- * be sent or received in an I2C transaction, greatly reducing overhead.
- */
 int SC16IS7xxPort::read(uint8_t *buffer, size_t size) {
     if (!readBuffer) {
 
@@ -584,9 +572,12 @@ SC16IS7xxInterface &SC16IS7xxInterface::softwareReset() {
     return *this;
 }
 
+/**
+ * @brief Internal class for the expected register values for `powerOnCheck()`
+ */
 typedef struct {
-    uint8_t reg;
-    uint8_t value;
+    uint8_t reg; //!< Register number
+    uint8_t value; //!< Expected value
 } ExpectedRegister;
 
 ExpectedRegister expectedRegisters[] = {
