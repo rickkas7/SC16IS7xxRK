@@ -572,13 +572,12 @@ SC16IS7xxInterface &SC16IS7xxInterface::softwareReset() {
     return *this;
 }
 
-/**
- * @brief Internal class for the expected register values for `powerOnCheck()`
- */
+#ifndef DOXYGEN_DO_NOT_DOCUMENT
 typedef struct {
-    uint8_t reg; //!< Register number
-    uint8_t value; //!< Expected value
+    uint8_t reg;
+    uint8_t value;
 } ExpectedRegister;
+#endif // DOXYGEN_DO_NOT_DOCUMENT
 
 ExpectedRegister expectedRegisters[] = {
     { SC16IS7xxInterface::IER_REG, 0x00 },

@@ -24,15 +24,15 @@ This library also supports the SC16IS752 and SC16IS762 dual UART.
 
 | SC16IS7xx    | TSSOP16 | HVQFN24 | TSSOP24 | TSSOP28 | HVQFN32 |
 | :----------- | :-----: | :-----: | :-----: | :-----: | :-----: |
-| SC16IS740IPW | &check; |         |         |         |         |
-| SC16IS750IBS |         | &check; |         |         |         |
-| SC16IS760IBS |         | &check; |         |         |         |
-| SC16IS750IPW |         |         | &check; |         |         |
-| SC16IS760IPW |         |         | &check; |         |         |
-| SC16IS752IPW |         |         |         | &check; |         |
-| SC16IS762IPW |         |         |         | &check; |         |
-| SC16IS752IBS |         |         |         |         | &check; |
-| SC16IS762IBS |         |         |         |         | &check; |
+| SC16IS740IPW | x       |         |         |         |         |
+| SC16IS750IBS |         | x       |         |         |         |
+| SC16IS760IBS |         | x       |         |         |         |
+| SC16IS750IPW |         |         | x       |         |         |
+| SC16IS760IPW |         |         | x       |         |         |
+| SC16IS752IPW |         |         |         | x       |         |
+| SC16IS762IPW |         |         |         | x       |         |
+| SC16IS752IBS |         |         |         |         | x       |
+| SC16IS762IBS |         |         |         |         | x       |
 
 
 ## Serial connections and flow control
@@ -67,25 +67,25 @@ The chip requires an external crystal, which is typically either 1.8432 MHz or 3
 
 | Baud Rate | 1.8432 MHz | 3.072 MHz |
 | :--- | :---: | :---: |
-| 50 | &check; | &check; |
-| 75 | &check; | &check; |
+| 50 | x | x |
+| 75 | x | x |
 | 110 | 0.026 | 0.026 |
 | 134.5 | 0.058 | 0.034 |
-| 150 | &check; | &check; |
-| 300 | &check; | &check; |
-| 600 | &check; | &check; |
-| 1200 | &check; | &check; |
-| 1800 | &check; | 0.312 |
-| 2000 | 0.069 | &check; |
-| 2400 | &check; | &check; |
-| 3600 | &check; | 0.628 |
-| 4800 | &check; | &check; |
-| 7200 | &check; | 1.23 |
-| 9600 | &check; | &check; |
-| 19200 | &check; | &check; |
-| 38400 | &check; | &check; |
-| 56000 | 2.86 | &nbsp; |
-| 115200 | &check; | &nbsp; |
+| 150 | x | x |
+| 300 | x | x |
+| 600 | x | x |
+| 1200 | x | x |
+| 1800 | x | 0.312 |
+| 2000 | 0.069 | x |
+| 2400 | x | x |
+| 3600 | x | 0.628 |
+| 4800 | x | x |
+| 7200 | x | 1.23 |
+| 9600 | x | x |
+| 19200 | x | x |
+| 38400 | x | x |
+| 56000 | 2.86 |  |
+| 115200 | x |  |
 
 - A number in the table above indicates the percentage deviation from the baud rate. Because of the large deviation, 56000 baud is not recommended for use with a 1.8432 MHz crystal.
 - An empty space in the table above indicates that there is no divisor that can produce this baud rate with that crystal.
@@ -150,7 +150,7 @@ Typically from global `setup()` you set the options for the chip.
 
 #### SPI 
 
-To use SPI, yoy specify which SPI port (typically `SPI`), the CS pin, and the speed in MHz. The speed is optional, and defaults to 4 MHz.
+To use SPI, you specify which SPI port (typically `SPI`), the CS pin, and the speed in MHz. The speed is optional, and defaults to 4 MHz.
 
 ```cpp
 // SPI port, CS line
