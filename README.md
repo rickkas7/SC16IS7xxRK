@@ -318,3 +318,9 @@ extSerial.begin(9600, SC16IS7xxPort::OPTIONS_8N1 | SC16IS7xxPort::OPTIONS_FLOW_C
 
 If you leave off the `OPTIONS_8N1` the output will be 5N1, not 8N1!
 
+## Version history
+
+### 0.0.2 (2025-03-13)
+
+- Added new examples 11 and 12 for using the library from a class
+

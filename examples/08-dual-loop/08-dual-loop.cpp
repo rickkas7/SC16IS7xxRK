@@ -13,6 +13,22 @@ SC16IS7x2 extSerial;
 // Uncomment this to use SPI and set to the CS pin
 // #define USE_SPI_CS D4
 
+// The SC16IS752 breakout that I used has this pinout. The order of your board may be different
+// Breakout  I2C Mode  SPI Mode    Notes
+// VCC       3V3       3V3
+// GND       GND       GND
+// RESET                           Active low. Connect to 3V3 if not using, otherwise use pull-up.
+// A0/CS     GND       D2          CS pin for SPI
+// A1/SI     GND       MOSI
+// NC/SO     
+// IRQ                             Open collector output
+// I2C/SPI   3V3       GND         
+// SCL/SCLK  D1        SCK
+// SDA/VSS   D0        GND
+
+// If A0 and A1 are both connected to GND the address is 0x4D with the SC16IS752
+
+
 void setup()
 {
     // If you want to see the log messages at startup, uncomment the following line
@@ -21,7 +37,7 @@ void setup()
 #ifdef USE_SPI_CS
     extSerial.withSPI(&SPI, USE_SPI_CS, 4); // SPI port, CS line, speed in MHz
 #else
-    extSerial.withI2C(&Wire, 0);
+    extSerial.withI2C(&Wire, 0x4d);
     Wire.setSpeed(CLOCK_SPEED_400KHZ);
 #endif
 
